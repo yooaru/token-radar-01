@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Token Radar: pre-token protocols ranked by implied value</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<a class="skip" href="#board">Skip to the board</a>
+
+<header class="masthead">
+  <div class="brand">
+    <span class="mark" aria-hidden="true"><span></span></span>
+    <div class="brand-text">
+      <h1>Token Radar</h1>
+      <p class="tagline">Which protocol is worth farming before it issues a token</p>
+    </div>
+  </div>
+  <dl class="stats" id="stats">
+    <div><dt>scanned</dt><dd id="stat-scanned">&mdash;</dd></div>
+    <div><dt>watchlist</dt><dd id="stat-watchlist">&mdash;</dd></div>
+    <div><dt>ranked</dt><dd id="stat-ranked">&mdash;</dd></div>
+    <div><dt>early</dt><dd id="stat-early">&mdash;</dd></div>
+    <div><dt>already trading</dt><dd id="stat-live">&mdash;</dd></div>
+    <div><dt>snapshot</dt><dd id="stat-date">&mdash;</dd></div>
+  </dl>
+</header>
+
+<section class="method" id="method">
+  <div class="method-head">
+    <h2>How the value model works</h2>
+    <p class="method-lede">
+      Every implied value on this board is arithmetic on the snapshot's own figures. No protocol is
+      named in the model, so the same function scores every row, and the page recomputes each row
+      from the factors below and shows them side by side.
+    </p>
+  </div>
+  <ol class="formula">
+    <li>
+      <span class="f-name">size</span>
+      <span class="f-body">(TVL in millions) <sup>0.55</sup> &times; 2,000,000</span>
+      <span class="f-note">TVL with diminishing returns: ten times the TVL is worth far less than ten times the value.</span>
+    </li>
+    <li>
+      <span class="f-name">growth</span>
+      <span class="f-body">1 + (7-day TVL change, clamped to &minus;60%..+120%) / 100 &times; 0.5</span>
+      <span class="f-note">Protocols whose TVL is shrinking are marked down; the clamp keeps one bad week from deciding a rank.</span>
+    </li>
+    <li>
+      <span class="f-name">maturity</span>
+      <span class="f-body">0.75 + min(days tracked with no token, 730) / 730 &times; 0.5</span>
+      <span class="f-note">The longer a protocol has run without a token, the closer it is to issuing one.</span>
+    </li>
+    <li>
+      <span class="f-name">breadth</span>
+      <span class="f-body">min(1 + 0.06 &times; (chains &minus; 1), 1.30)</span>
+      <span class="f-note">A protocol on many chains reaches more users, and points programmes usually follow them.</span>
+    </li>
+    <li>
+      <span class="f-name">category</span>
+      <span class="f-body">the prior for the snapshot's own category field</span>
+      <span class="f-note">One number per category, from what that kind of protocol has been worth when it issued.</span>
+    </li>
+    <li>
+      <span class="f-name">implied</span>
+      <span class="f-body">size &times; growth &times; maturity &times; breadth &times; category</span>
+      <span class="f-note">The entry's own claim about what the token would be worth, not a market quote and not a prediction of a launch.</span>
+    </li>
+  </ol>
+</section>
+
+<nav class="tabs" role="tablist" aria-label="Views">
+  <button type="button" role="tab" id="tab-pre" aria-selected="true" aria-controls="board">Pre-token radar</button>
+  <button type="button" role="tab" id="tab-live" aria-selected="false" aria-controls="live">Already trading</button>
+</nav>
+
+<section class="controls" id="controls">
+  <div class="field grow">
+    <label for="q">Search</label>
+    <input type="search" id="q" placeholder="protocol, slug, chain" autocomplete="off" spellcheck="false">
+  </div>
+  <div class="field">
+    <label for="category">Category</label>
+    <select id="category"><option value="all">All categories</option></select>
+  </div>
+  <div class="field">
+    <label for="chain">Chain</label>
+    <select id="chain"><option value="all">All chains</option></select>
+  </div>
+  <div class="field">
+    <label for="tvl">TVL</label>
+    <select id="tvl">
+      <option value="all">Any TVL</option>
+      <option value="0-50">under $50M</option>
+      <option value="50-250">$50M &ndash; $250M</option>
+      <option value="250-1000">$250M &ndash; $1B</option>
+      <option value="1000-">$1B and up</option>
+    </select>
+  </div>
+  <div class="field">
+    <label for="growth">7-day TVL</label>
+    <select id="growth">
+      <option value="all">Any change</option>
+      <option value="up">Growing</option>
+      <option value="flat">Flat</option>
+      <option value="down">Shrinking</option>
+    </select>
+  </div>
+  <div class="field check">
+    <input type="checkbox" id="watch-only">
+    <label for="watch-only">Watchlist only</label>
+  </div>
+  <div class="field">
+    <label for="sort">Sort by</label>
+    <select id="sort">
+      <option value="implied">Implied value</option>
+      <option value="tvl">TVL</option>
+      <option value="growth">7-day change</option>
+      <option value="age">Days with no token</option>
+      <option value="chains">Chains</option>
+      <option value="readiness">Readiness</option>
+      <option value="name">Name</option>
+    </select>
+  </div>
+  <button type="button" id="dir" class="dir" aria-label="Reverse the order">&#9660;</button>
+  <p class="count" id="count" aria-live="polite">&mdash;</p>
+</section>
+
+<main id="board" tabindex="-1" aria-busy="true"></main>
+<section id="live" hidden></section>
+
+<div class="scrim" id="scrim" hidden></div>
+<aside class="detail" id="detail" aria-label="Protocol detail" hidden></aside>
+
+<footer class="foot">
+  <p>
+    The board is built from one sealed snapshot of the DefiLlama public protocol list. Implied value is
+    this entry's own arithmetic on that snapshot, not a quote and not a promise that a token is coming.
+    A protocol that records no token may still never issue one.
+  </p>
+  <p class="foot-meta" id="foot-meta"></p>
+</footer>
+
+<script src="../data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
