@@ -22,7 +22,7 @@
     <div><dt>watchlist</dt><dd id="stat-watchlist">&mdash;</dd></div>
     <div><dt>ranked</dt><dd id="stat-ranked">&mdash;</dd></div>
     <div><dt>early</dt><dd id="stat-early">&mdash;</dd></div>
-    <div><dt>already trading</dt><dd id="stat-live">&mdash;</dd></div>
+    <div><dt>calibrated on</dt><dd id="stat-comps">&mdash;</dd></div>
     <div><dt>snapshot</dt><dd id="stat-date">&mdash;</dd></div>
   </dl>
 </header>
@@ -31,48 +31,51 @@
   <div class="method-head">
     <h2>How the value model works</h2>
     <p class="method-lede">
-      Every implied value on this board is arithmetic on the snapshot's own figures. No protocol is
-      named in the model, so the same function scores every row, and the page recomputes each row
-      from the factors below and shows them side by side.
+      The snapshot carries no score, no ranking and no signal: deriving them is the work. Every implied
+      value here is arithmetic on the snapshot's own figures. The page recomputes each row from the
+      factors below and prints how many rows it reproduced, so the board, the code and the pixels are
+      one arithmetic rather than three stories.
     </p>
   </div>
   <ol class="formula">
     <li>
-      <span class="f-name">size</span>
-      <span class="f-body">(TVL in millions) <sup>0.55</sup> &times; 2,000,000</span>
-      <span class="f-note">TVL with diminishing returns: ten times the TVL is worth far less than ten times the value.</span>
+      <span class="f-name">size curve</span>
+      <span class="f-body">mcap = 10<sup>2.297</sup> &times; TVL<sup>0.615</sup></span>
+      <span class="f-note">Fitted on the <b id="comp-count">comps</b>: the snapshot's own traded protocols. The exponent says how much more a token is worth for each tenfold of TVL, read off the market rather than assumed.</span>
+    </li>
+    <li>
+      <span class="f-name">band</span>
+      <span class="f-body"><span id="band-low">low</span> to <span id="band-high">high</span></span>
+      <span class="f-note">The fit's own residual quartiles. The market pays a wide range for the same size, and the band says so.</span>
     </li>
     <li>
       <span class="f-name">growth</span>
-      <span class="f-body">1 + (7-day TVL change, clamped to &minus;60%..+120%) / 100 &times; 0.5</span>
-      <span class="f-note">Protocols whose TVL is shrinking are marked down; the clamp keeps one bad week from deciding a rank.</span>
+      <span class="f-body">1 + (7-day TVL change) / 100 &times; 0.5</span>
+      <span class="f-note">Clamped to &minus;60%..+120%, so one bad week cannot decide a rank.</span>
     </li>
     <li>
       <span class="f-name">maturity</span>
-      <span class="f-body">0.75 + min(days tracked with no token, 730) / 730 &times; 0.5</span>
+      <span class="f-body">0.75 + min(days with no token, 730) / 730 &times; 0.5</span>
       <span class="f-note">The longer a protocol has run without a token, the closer it is to issuing one.</span>
     </li>
     <li>
-      <span class="f-name">breadth</span>
-      <span class="f-body">min(1 + 0.06 &times; (chains &minus; 1), 1.30)</span>
-      <span class="f-note">A protocol on many chains reaches more users, and points programmes usually follow them.</span>
-    </li>
-    <li>
-      <span class="f-name">category</span>
-      <span class="f-body">the prior for the snapshot's own category field</span>
-      <span class="f-note">One number per category, from what that kind of protocol has been worth when it issued.</span>
-    </li>
-    <li>
       <span class="f-name">implied</span>
-      <span class="f-body">size &times; growth &times; maturity &times; breadth &times; category</span>
-      <span class="f-note">The entry's own claim about what the token would be worth, not a market quote and not a prediction of a launch.</span>
+      <span class="f-body">TVL<sup>0.615</sup> &times; growth &times; maturity</span>
+      <span class="f-note">This entry's own claim about what the token would be worth. Not a quote, and not a promise that a token comes.</span>
+    </li>
+    <li>
+      <span class="f-name">verdict</span>
+      <span class="f-body">farm &middot; thin &middot; skip</span>
+      <span class="f-note">The farm plan's gas against the capital it ties up, and the protocol's own seven-day direction.</span>
     </li>
   </ol>
+  <p class="test-line" id="test-line"></p>
 </section>
 
 <nav class="tabs" role="tablist" aria-label="Views">
   <button type="button" role="tab" id="tab-pre" aria-selected="true" aria-controls="board">Pre-token radar</button>
   <button type="button" role="tab" id="tab-live" aria-selected="false" aria-controls="live">Already trading</button>
+  <button type="button" role="tab" id="tab-pins" aria-selected="false" aria-controls="pins">Shortlist</button>
 </nav>
 
 <section class="controls" id="controls">
@@ -107,6 +110,15 @@
       <option value="down">Shrinking</option>
     </select>
   </div>
+  <div class="field">
+    <label for="verdict">Verdict</label>
+    <select id="verdict">
+      <option value="all">Any verdict</option>
+      <option value="farm">Farm it</option>
+      <option value="thin">Thin</option>
+      <option value="skip">Skip</option>
+    </select>
+  </div>
   <div class="field check">
     <input type="checkbox" id="watch-only">
     <label for="watch-only">Watchlist only</label>
@@ -118,26 +130,57 @@
       <option value="tvl">TVL</option>
       <option value="growth">7-day change</option>
       <option value="age">Days with no token</option>
-      <option value="chains">Chains</option>
+      <option value="cost">Farm cost</option>
       <option value="readiness">Readiness</option>
       <option value="name">Name</option>
     </select>
   </div>
   <button type="button" id="dir" class="dir" aria-label="Reverse the order">&#9660;</button>
+  <div class="field actions">
+    <button type="button" id="compare-toggle" class="ghost">Compare</button>
+    <button type="button" id="csv" class="ghost">CSV</button>
+    <button type="button" id="palette-toggle" class="ghost" title="Keyboard shortcuts">?</button>
+  </div>
   <p class="count" id="count" aria-live="polite">&mdash;</p>
 </section>
 
 <main id="board" tabindex="-1" aria-busy="true"></main>
 <section id="live" hidden></section>
+<section id="pins" hidden></section>
 
 <div class="scrim" id="scrim" hidden></div>
 <aside class="detail" id="detail" aria-label="Protocol detail" hidden></aside>
+
+<div class="palette" id="palette" hidden role="dialog" aria-label="Keyboard shortcuts">
+  <div class="palette-box">
+    <h3>Shortcuts</h3>
+    <dl>
+      <div><dt>/</dt><dd>focus the search box</dd></div>
+      <div><dt>p</dt><dd>pin or unpin the selected row</dd></div>
+      <div><dt>c</dt><dd>toggle compare mode</dd></div>
+      <div><dt>l</dt><dd>switch between the pre-token and already-trading views</dd></div>
+      <div><dt>Esc</dt><dd>close the detail, the compare panel and this box</dd></div>
+    </dl>
+    <button type="button" id="palette-close" class="ghost">Close</button>
+  </div>
+</div>
+
+<div class="compare" id="compare" hidden aria-label="Compare selected protocols">
+  <div class="compare-box">
+    <div class="compare-head">
+      <h3>Side by side</h3>
+      <button type="button" id="compare-close" class="ghost">Close</button>
+    </div>
+    <div id="compare-body"></div>
+  </div>
+</div>
 
 <footer class="foot">
   <p>
     The board is built from one sealed snapshot of the DefiLlama public protocol list. Implied value is
     this entry's own arithmetic on that snapshot, not a quote and not a promise that a token is coming.
-    A protocol that records no token may still never issue one.
+    A protocol that records no token may still never issue one. The calibration was tested on
+    protocols it never saw, and the page says what that test earned.
   </p>
   <p class="foot-meta" id="foot-meta"></p>
 </footer>
