@@ -154,6 +154,7 @@ export interface RadarRow {
   implied_value_usd: number;
   implied_value_low_usd: number;
   implied_value_high_usd: number;
+  value_per_capital: number;
   fitted_value_usd: number;
   growth_pct: number;
   growth_multiplier: number;
@@ -167,6 +168,7 @@ export interface RadarRow {
   cost_share_of_capital: number;
   hold_days: number;
   farm_steps: string[];
+  peers: { name: string; tvl_usd: number; mcap_usd: number; multiple: number }[];
 }
 
 /** A protocol whose token already trades: the market's own numbers, and the comp set's members. */
@@ -197,6 +199,8 @@ export interface RadarData {
   early_size: number;
   live_size: number;
   comp_set_size: number;
+  audited_no_token: number;
+  watchlist_covered: number;
   scanned_size: number;
   rows: RadarRow[];
   live: LiveRow[];
@@ -676,10 +680,33 @@ export function buildBoard(snapshot: Snapshot, model: ModelConstants = modelCons
   }));
 }
 
+/** The traded protocols closest in size to a protocol's TVL: the peers its value is read against. */
+function nearestPeers(
+  tvlUsd: number,
+  comps: SnapshotProtocol[],
+): { name: string; tvl_usd: number; mcap_usd: number; multiple: number }[] {
+  const target = Math.log10(Math.max(tvlUsd, 1e6));
+  return comps
+    .slice()
+    .sort(
+      (a, b) =>
+        Math.abs(Math.log10(Math.max(a.tvl_usd, 1e6)) - target) -
+        Math.abs(Math.log10(Math.max(b.tvl_usd, 1e6)) - target),
+    )
+    .slice(0, 3)
+    .map((p) => ({
+      name: p.name,
+      tvl_usd: p.tvl_usd,
+      mcap_usd: p.mcap_usd!,
+      multiple: Math.round((p.mcap_usd! / p.tvl_usd) * 1000) / 1000,
+    }));
+}
+
 /** Everything the dashboard renders, from the snapshot. */
 export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: RadarData } {
   const model = modelConstants(snapshot);
   const board = buildBoard(snapshot, model);
+  const comps = compProtocols(snapshot);
   const live = liveRows(snapshot);
   const watch = new Set(snapshot.watchlist);
   const radar: RadarData = {
@@ -695,12 +722,15 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
     early_size: board.filter((r) => !watch.has(r.slug)).length,
     live_size: live.length,
     comp_set_size: compProtocols(snapshot).length,
+    audited_no_token: snapshot.protocols.filter((p) => isPreToken(p)).length,
+    watchlist_covered: board.filter((r) => r.watchlisted).length,
     scanned_size: snapshot.protocols.length,
     rows: board.map((row) => ({
       rank: row.rank,
       slug: row.slug,
       name: row.name,
       category: row.category,
+      peers: nearestPeers(row.tvl_usd, comps),
       chains: row.chains,
       tvl_usd: row.tvl_usd,
       change_7d: row.change_7d,
@@ -710,6 +740,7 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
       implied_value_usd: row.implied_value_usd,
       implied_value_low_usd: row.implied_value_low_usd,
       implied_value_high_usd: row.implied_value_high_usd,
+      value_per_capital: Math.round(row.implied_value_usd / row.farm.capital_usd),
       fitted_value_usd: row.model.fitted_value_usd,
       growth_pct: row.model.growth_pct,
       growth_multiplier: row.model.growth_multiplier,
@@ -721,6 +752,7 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
       capital_usd: row.farm.capital_usd,
       total_cost_usd: row.farm.total_cost_usd,
       cost_share_of_capital: row.farm.cost_share_of_capital,
+      peers: nearestPeers(row.tvl_usd, comps),
       hold_days: row.farm.hold_days,
       farm_steps: row.farm_steps,
     })),

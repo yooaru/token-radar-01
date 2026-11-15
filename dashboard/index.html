@@ -19,10 +19,12 @@
   </div>
   <dl class="stats" id="stats">
     <div><dt>scanned</dt><dd id="stat-scanned">&mdash;</dd></div>
-    <div><dt>watchlist</dt><dd id="stat-watchlist">&mdash;</dd></div>
+    <div><dt>watchlist covered</dt><dd id="stat-watchlist">&mdash;</dd></div>
     <div><dt>ranked</dt><dd id="stat-ranked">&mdash;</dd></div>
     <div><dt>early</dt><dd id="stat-early">&mdash;</dd></div>
+    <div><dt>no token yet</dt><dd id="stat-audited">&mdash;</dd></div>
     <div><dt>calibrated on</dt><dd id="stat-comps">&mdash;</dd></div>
+    <div><dt>net per $1k</dt><dd id="stat-net">&mdash;</dd></div>
     <div><dt>snapshot</dt><dd id="stat-date">&mdash;</dd></div>
   </dl>
 </header>
@@ -70,6 +72,28 @@
     </li>
   </ol>
   <p class="test-line" id="test-line"></p>
+
+  <div class="sandbox" id="sandbox">
+    <div class="sandbox-head">
+      <h3>What if the model were different?</h3>
+      <p>Move a slider and the ranking moves with it. The board above is the model as fitted and shipped; this is the same arithmetic under other settings, so a reader can see how much the ranking depends on the choices.</p>
+    </div>
+    <div class="sandbox-controls">
+      <div class="field">
+        <label for="s-growth">growth weight <span id="s-growth-v">0.50</span></label>
+        <input type="range" id="s-growth" min="0" max="1.5" step="0.05" value="0.5">
+      </div>
+      <div class="field">
+        <label for="s-maturity">maturity range <span id="s-maturity-v">0.50</span></label>
+        <input type="range" id="s-maturity" min="0" max="1" step="0.05" value="0.5">
+      </div>
+      <div class="field">
+        <label for="s-floor">maturity floor <span id="s-floor-v">0.75</span></label>
+        <input type="range" id="s-floor" min="0" max="1" step="0.05" value="0.75">
+      </div>
+    </div>
+    <p class="sandbox-out" id="sandbox-out"></p>
+  </div>
 </section>
 
 <nav class="tabs" role="tablist" aria-label="Views">
@@ -130,6 +154,7 @@
       <option value="tvl">TVL</option>
       <option value="growth">7-day change</option>
       <option value="age">Days with no token</option>
+      <option value="net">Net per $1k at risk</option>
       <option value="cost">Farm cost</option>
       <option value="readiness">Readiness</option>
       <option value="name">Name</option>

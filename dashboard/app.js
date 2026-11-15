@@ -63,6 +63,10 @@
     paletteToggle: document.getElementById('palette-toggle'),
     paletteClose: document.getElementById('palette-close'),
     testLine: document.getElementById('test-line'),
+    sandboxGrowth: document.getElementById('s-growth'),
+    sandboxMaturity: document.getElementById('s-maturity'),
+    sandboxFloor: document.getElementById('s-floor'),
+    sandboxOut: document.getElementById('sandbox-out'),
   };
 
   // ---------- formatting
@@ -151,6 +155,7 @@
     if (state.sort === 'tvl') return row.tvl_usd;
     if (state.sort === 'growth') return row.change_7d === null ? -999 : row.change_7d;
     if (state.sort === 'age') return row.age_days === null ? -1 : row.age_days;
+    if (state.sort === 'net') return row.value_per_capital;
     if (state.sort === 'cost') return row.total_cost_usd;
     if (state.sort === 'readiness') return row.readiness;
     if (state.sort === 'name') return row.name.toLowerCase();
@@ -237,7 +242,7 @@
         node('th', { class: 'sortable num', 'data-sort': 'tvl', text: 'TVL' }),
         node('th', { class: 'sortable num', 'data-sort': 'growth', text: '7d' }),
         node('th', { class: 'sortable num', 'data-sort': 'age', text: 'No token for' }),
-        node('th', { text: 'Verdict' }),
+        node('th', { class: 'sortable num', 'data-sort': 'net', text: 'Net per $1k' }),
         node('th', { class: 'sortable num', 'data-sort': 'cost', text: 'Farm cost' }),
         node('th', { class: 'sortable num', 'data-sort': 'implied', text: 'Implied value' }),
       ]),
@@ -276,6 +281,7 @@
         growthCell(row),
         node('td', { class: 'num', text: fmtAge(row.age_days) }),
         node('td', null, [node('span', { class: 'verdict ' + row.verdict, text: row.verdict })]),
+        node('td', { class: 'num', text: '$' + Math.round(row.value_per_capital / 1000) + 'k' }),
         node('td', { class: 'num', text: '$' + row.total_cost_usd.toFixed(2) }),
         valueTd,
       ];
@@ -345,11 +351,36 @@
       plan.appendChild(node('li', { text: step }));
     });
 
+  // The traded protocols closest in size to this one: the peers the model's curve is read against.
+  function peerTable(row) {
+    var peers = row.peers || [];
+    if (!peers.length) return node('p', { class: 'empty', text: 'No traded protocol of a similar size in this snapshot.' });
+    var body = node('tbody');
+    peers.forEach(function (p) {
+      body.appendChild(node('tr', null, [
+        node('td', { text: p.name }),
+        node('td', { class: 'num', text: fmtUsd(p.tvl_usd) }),
+        node('td', { class: 'num', text: fmtUsd(p.mcap_usd) }),
+        node('td', { class: 'num', text: p.multiple.toFixed(3) + 'x' }),
+      ]));
+    });
+    return node('table', { class: 'peer-table' }, [
+      node('thead', null, [node('tr', null, [
+        node('th', { text: 'Traded peer' }),
+        node('th', { class: 'num', text: 'TVL' }),
+        node('th', { class: 'num', text: 'Market cap' }),
+        node('th', { class: 'num', text: 'mcap / TVL' }),
+      ])]),
+      body,
+    ]);
+  }
+
     var factors = node('ul', { class: 'factors' }, [
       factorBar('size curve', fmtUsd(row.fitted_value_usd) + ' at ' + MODEL.size_curve_exponent.toFixed(3), Math.min(row.tvl_usd / 1e10, 1)),
       factorBar('growth', fmtMult(row.growth_multiplier) + ' (' + fmtPct(row.change_7d) + ')', (row.growth_multiplier - 0.7) / 0.9),
       factorBar('maturity', fmtMult(row.maturity_multiplier), (row.maturity_multiplier - 0.75) / 0.5),
       factorBar('band', fmtUsd(row.implied_value_low_usd) + '–' + fmtUsd(row.implied_value_high_usd), row.implied_value_usd / Math.max(row.implied_value_high_usd, 1)),
+      factorBar('peers', (row.peers || []).map(function (p) { return p.name + ' ' + p.multiple + 'x'; }).join(', '), 1),
     ]);
 
     var facts = node('dl', { class: 'facts' }, [
@@ -384,6 +415,8 @@
     el.detail.appendChild(facts);
     el.detail.appendChild(node('h4', { text: 'The model on this row' }));
     el.detail.appendChild(factors);
+    el.detail.appendChild(node('h4', { text: 'Traded protocols of a similar size' }));
+    el.detail.appendChild(peerTable(row));
     el.detail.appendChild(node('h4', { text: 'How to farm it' }));
     el.detail.appendChild(plan);
     el.detail.appendChild(node('button', { class: 'back', type: 'button', text: 'Close', onclick: closeDetail }));
@@ -636,11 +669,13 @@
 
   function renderStats() {
     document.getElementById('stat-scanned').textContent = String(DATA.scanned_size);
-    document.getElementById('stat-watchlist').textContent = String(DATA.watchlist_size);
+    document.getElementById('stat-watchlist').textContent = DATA.watchlist_covered + '/' + DATA.watchlist_size;
     document.getElementById('stat-ranked').textContent = String(DATA.board_size);
     document.getElementById('stat-early').textContent = String(DATA.early_size);
+    document.getElementById('stat-audited').textContent = String(DATA.audited_no_token);
     document.getElementById('stat-comps').textContent = String(DATA.comp_set_size);
     document.getElementById('stat-date').textContent = DATA.as_of;
+    document.getElementById('stat-net').textContent = '$' + Math.round(ROWS.length ? ROWS[0].value_per_capital / 1000 : 0) + 'k';
     document.getElementById('comp-count').textContent = DATA.comp_set_size + ' traded protocols';
     document.getElementById('band-low').textContent = fmtMult(MODEL.band_low_factor);
     document.getElementById('band-high').textContent = fmtMult(MODEL.band_high_factor);
@@ -701,6 +736,46 @@
   fillSelect(el.category, categories());
   fillSelect(el.chain, chains());
   wireControls();
+
+  // ---------- the sandbox
+
+  // The same arithmetic the board was built with, under the reader's own settings: how much of the
+  // ranking is the model's choice and how much is the snapshot's. It names the protocols that move.
+  function sandboxValue(row, growthWeight, maturityRange, maturityFloor) {
+    var growth = Math.min(MODEL.growth_cap, Math.max(MODEL.growth_floor, row.change_7d === null || row.change_7d === undefined ? 0 : row.change_7d));
+    var growthMult = 1 + (growth / 100) * growthWeight;
+    var age = row.age_days === null || row.age_days === undefined ? MODEL.unknown_age_days : row.age_days;
+    var maturityMult = maturityFloor + (Math.min(Math.max(age, 0), MODEL.maturity_days) / MODEL.maturity_days) * maturityRange;
+    var fitted = Math.pow(10, MODEL.size_curve_intercept + MODEL.size_curve_exponent * Math.log10(Math.max(row.tvl_usd, MODEL.min_tvl_usd)));
+    return fitted * growthMult * maturityMult;
+  }
+
+  function renderSandbox() {
+    var growthWeight = parseFloat(el.sandboxGrowth.value);
+    var maturityRange = parseFloat(el.sandboxMaturity.value);
+    var maturityFloor = parseFloat(el.sandboxFloor.value);
+    document.getElementById('s-growth-v').textContent = growthWeight.toFixed(2);
+    document.getElementById('s-maturity-v').textContent = maturityRange.toFixed(2);
+    document.getElementById('s-floor-v').textContent = maturityFloor.toFixed(2);
+
+    var base = ROWS.slice().sort(function (a, b) { return b.implied_value_usd - a.implied_value_usd; }).map(function (r) { return r.slug; });
+    var moved = [];
+    var under = ROWS.map(function (r) { return { slug: r.slug, name: r.name, value: sandboxValue(r, growthWeight, maturityRange, maturityFloor) }; });
+    under.sort(function (a, b) { return b.value - a.value; });
+    under.forEach(function (r, i) {
+      var was = base.indexOf(r.slug) + 1;
+      if (Math.abs(was - (i + 1)) >= 3) moved.push({ name: r.name, was: was, now: i + 1 });
+    });
+    var top = under.slice(0, 5).map(function (r, i) { return (i + 1) + '. ' + r.name; }).join('  ·  ');
+    el.sandboxOut.textContent = moved.length
+      ? 'Under these settings the top five are ' + top + '. ' + moved.length + ' protocol' + (moved.length === 1 ? '' : 's') + ' move three places or more: ' +
+        moved.slice(0, 6).map(function (m) { return m.name + ' ' + m.was + '→' + m.now; }).join(', ') + '.'
+      : 'Under these settings the top five are ' + top + '. No protocol moves three places or more, so the ranking is not sensitive to these choices.';
+  }
+  [el.sandboxGrowth, el.sandboxMaturity, el.sandboxFloor].forEach(function (input) {
+    input.addEventListener('input', renderSandbox);
+  });
+  renderSandbox();
   renderStats();
   render();
   window.addEventListener('hashchange', applyHash);
