@@ -60,11 +60,12 @@
     compareBody: document.getElementById('compare-body'),
     compareClose: document.getElementById('compare-close'),
     csv: document.getElementById('csv'),
+    paletteInput: document.getElementById('palette-input'),
+    paletteList: document.getElementById('palette-list'),
     excluded: document.getElementById('excluded'),
     tabExcluded: document.getElementById('tab-excluded'),
     palette: document.getElementById('palette'),
     paletteToggle: document.getElementById('palette-toggle'),
-    paletteClose: document.getElementById('palette-close'),
     testLine: document.getElementById('test-line'),
     sandboxGrowth: document.getElementById('s-growth'),
     sandboxMaturity: document.getElementById('s-maturity'),
@@ -159,6 +160,7 @@
     if (state.sort === 'growth') return row.change_7d === null ? -999 : row.change_7d;
     if (state.sort === 'age') return row.age_days === null ? -1 : row.age_days;
     if (state.sort === 'net') return row.implied_multiple;
+    if (state.sort === 'lowmult') return row.value_low_per_capital;
     if (state.sort === 'cost') return row.total_cost_usd;
     if (state.sort === 'readiness') return row.readiness;
     if (state.sort === 'name') return row.name.toLowerCase();
@@ -248,6 +250,7 @@
         node('th', { class: 'sortable num', 'data-sort': 'age', text: 'No token for' }),
         node('th', { class: 'sortable num', 'data-sort': 'net', text: 'Implied mcap / TVL' }),
         node('th', { class: 'sortable num', 'data-sort': 'cost', text: 'Farm cost' }),
+        node('th', { class: 'sortable num', 'data-sort': 'lowmult', text: 'Low-end x capital' }),
         node('th', { class: 'sortable num', 'data-sort': 'implied', text: 'Implied value' }),
       ]),
     ]);
@@ -287,6 +290,7 @@
         node('td', null, [node('span', { class: 'verdict ' + row.verdict, text: row.verdict })]),
         node('td', { class: 'num', text: row.implied_multiple.toFixed(3) + 'x' }),
         node('td', { class: 'num', text: '$' + row.total_cost_usd.toFixed(2) }),
+        node('td', { class: 'num', text: row.value_low_per_capital >= 1000 ? Math.round(row.value_low_per_capital / 1000) + 'k x' : Math.round(row.value_low_per_capital) + 'x' }),
         valueTd,
       ];
       cells.forEach(function (c) { tr.appendChild(c); });
@@ -609,8 +613,14 @@
     el.compareToggle.addEventListener('click', function () { setCompareMode(!state.compareMode); });
     el.compareClose.addEventListener('click', function () { setCompareMode(false); });
     el.csv.addEventListener('click', exportCsv);
-    el.paletteToggle.addEventListener('click', function () { el.palette.hidden = !el.palette.hidden; });
-    el.paletteClose.addEventListener('click', function () { el.palette.hidden = true; });
+    el.paletteToggle.addEventListener('click', function () { if (el.palette.hidden) openPalette(); else closePalette(); });
+    el.paletteInput.addEventListener('input', paletteRender);
+    el.paletteInput.addEventListener('keydown', function (ev) {
+      if (ev.key === 'ArrowDown') { ev.preventDefault(); paletteMove(1); }
+      else if (ev.key === 'ArrowUp') { ev.preventDefault(); paletteMove(-1); }
+      else if (ev.key === 'Enter') { ev.preventDefault(); paletteRun(); }
+      else if (ev.key === 'Escape') { ev.preventDefault(); closePalette(); }
+    });
     document.querySelectorAll('thead th.sortable').forEach(function (th) {
       th.addEventListener('click', function () {
         var key = th.getAttribute('data-sort');
@@ -623,16 +633,18 @@
       });
     });
     document.addEventListener('keydown', function (ev) {
-      if (ev.key === 'Escape') { closeDetail(); el.palette.hidden = true; setCompareMode(false); return; }
+      if (ev.key === 'Escape') { closeDetail(); closePalette(); setCompareMode(false); return; }
       var tag = (ev.target && ev.target.tagName) || '';
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') {
         if (ev.key === 'Escape') ev.target.blur();
         return;
       }
       if (ev.key === '/') { ev.preventDefault(); el.q.focus(); return; }
+      if (ev.key === 'k' && (ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); openPalette(); return; }
       if (ev.key === 'p' && state.selected) { togglePin(state.selected); return; }
       if (ev.key === 'c') { setCompareMode(!state.compareMode); return; }
       if (ev.key === 'l') { setTab(state.tab === 'live' ? 'pre' : 'live'); }
+      if (ev.key === '?') { ev.preventDefault(); openPalette(); }
     });
   }
 
@@ -652,9 +664,130 @@
     render();
   }
 
+  // ---------- the command palette
+
+  // One box that finds anything on the board: a protocol by name or slug, a category, a chain, or a
+  // command. The list is the board's own rows, so what it offers is what the board holds.
+  var paletteItems = [];
+  var paletteIndex = 0;
+
+  function paletteCommands() {
+    return [
+      { kind: 'command', label: 'Show the watchlist only', run: function () { state.watchOnly = true; el.watchOnly.checked = true; render(); } },
+      { kind: 'command', label: 'Show every protocol again', run: function () { state.watchOnly = false; el.watchOnly.checked = false; render(); } },
+      { kind: 'command', label: 'Show the already-trading protocols', run: function () { setTab('live'); } },
+      { kind: 'command', label: 'Show the protocols set aside, with reasons', run: function () { setTab('excluded'); } },
+      { kind: 'command', label: 'Show the shortlist', run: function () { setTab('pins'); } },
+      { kind: 'command', label: 'Turn on compare mode', run: function () { setCompareMode(true); } },
+      { kind: 'command', label: 'Export the board as CSV', run: exportCsv },
+      { kind: 'command', label: 'Sort by low-end value x capital', run: function () { state.sort = 'lowmult'; el.sort.value = 'lowmult'; render(); } },
+      { kind: 'command', label: 'Sort by farm cost', run: function () { state.sort = 'cost'; el.sort.value = 'cost'; render(); } },
+    ];
+  }
+
+  function paletteBuild(query) {
+    var q = query.trim().toLowerCase();
+    var items = [];
+    var commands = paletteCommands();
+    for (var i = 0; i < commands.length; i++) {
+      if (q === '' || commands[i].label.toLowerCase().indexOf(q) >= 0) items.push(commands[i]);
+    }
+    for (var j = 0; j < ROWS.length && items.length < 40; j++) {
+      var row = ROWS[j];
+      var hay = (row.name + ' ' + row.slug + ' ' + (row.category || '') + ' ' + (row.chains || []).join(' ')).toLowerCase();
+      if (q === '' || hay.indexOf(q) >= 0) {
+        items.push({
+          kind: 'protocol',
+          label: row.name,
+          sub: row.slug,
+          right: fmtUsd(row.implied_value_usd),
+          run: (function (slug) { return function () { openDetail(slug); }; })(row.slug),
+        });
+      }
+    }
+    return items;
+  }
+
+  function paletteRender() {
+    paletteItems = paletteBuild(el.paletteInput.value);
+    paletteIndex = 0;
+    el.paletteList.innerHTML = '';
+    for (var i = 0; i < paletteItems.length; i++) {
+      (function (item, index) {
+        var li = document.createElement('li');
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = index === 0 ? 'on' : '';
+        var left = document.createElement('span');
+        left.textContent = item.label;
+        var right = document.createElement('span');
+        right.className = item.kind === 'command' ? 'p-kind' : 'p-sub';
+        right.textContent = item.kind === 'command' ? 'command' : (item.right || item.sub);
+        button.appendChild(left);
+        button.appendChild(right);
+        button.addEventListener('click', function () {
+          closePalette();
+          item.run();
+        });
+        li.appendChild(button);
+        el.paletteList.appendChild(li);
+      })(paletteItems[i], i);
+    }
+  }
+
+  function openPalette() {
+    el.palette.hidden = false;
+    el.paletteInput.value = '';
+    paletteRender();
+    el.paletteInput.focus();
+  }
+
+  function closePalette() {
+    el.palette.hidden = true;
+  }
+
+  function paletteMove(step) {
+    if (!paletteItems.length) return;
+    paletteIndex = (paletteIndex + step + paletteItems.length) % paletteItems.length;
+    var buttons = el.paletteList.querySelectorAll('button');
+    for (var i = 0; i < buttons.length; i++) buttons[i].className = i === paletteIndex ? 'on' : '';
+    if (buttons[paletteIndex]) buttons[paletteIndex].scrollIntoView({ block: 'nearest' });
+  }
+
+  function paletteRun() {
+    if (!paletteItems.length) return;
+    var item = paletteItems[paletteIndex];
+    closePalette();
+    item.run();
+  }
+
+  // The research note: the model's own error across rolling time-ordered folds, and the claims it
+
+  // does not make.
+  function renderNote() {
+    var test = DATA.test;
+    document.getElementById('note-test').textContent =
+      'The size curve was fitted on ' + test.train_size + ' protocols tracked before ' + test.split_day +
+      ' and read against ' + test.test_size + ' later ones it had never seen: median error ' +
+      test.test_median_factor.toFixed(1) + 'x, ' + Math.round(test.test_within_2x_share * 100) + '% within 2x, ' +
+      Math.round(test.test_band_coverage * 100) + '% inside the band. Rolling the split forward through ' +
+      test.folds + ' time-ordered folds gives median errors of ' + test.fold_median_factors.join('x, ') + 'x: ' +
+      'the procedure is worth a few times the price, not a precise one, and the band says so.';
+    var body = document.getElementById('note-folds');
+    body.innerHTML = '';
+    for (var i = 0; i < test.fold_median_factors.length; i++) {
+      body.appendChild(node('tr', null, [
+        node('td', { text: 'fold ' + (i + 1) }),
+        node('td', { class: 'num', text: test.fold_median_factors[i].toFixed(2) + 'x' }),
+        node('td', { class: 'num', text: 'exponent ' + test.fold_exponents[i].toFixed(3) }),
+      ]));
+    }
+  }
+
   // ---------- CSV
 
   function exportCsv() {
+
     var rows = visibleRows();
     var head = ['rank', 'name', 'slug', 'category', 'chains', 'tvl_usd', 'change_7d', 'days_without_token', 'implied_value_usd', 'implied_low_usd', 'implied_high_usd', 'verdict', 'farm_cost_usd', 'capital_usd'];
     var lines = [head.join(',')];
@@ -933,6 +1066,7 @@
   renderStats();
   render();
   renderChart();
+  renderNote();
   window.addEventListener('hashchange', applyHash);
   applyHash();
 })();

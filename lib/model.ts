@@ -86,6 +86,9 @@ export interface ModelTest {
   test_median_factor: number;
   test_within_2x_share: number;
   test_band_coverage: number;
+  folds: number;
+  fold_median_factors: number[];
+  fold_exponents: number[];
 }
 
 /** What the comp set is and what it says. */
@@ -136,6 +139,9 @@ export interface BoardRow {
     hold_days: number;
     weeks: number;
     value_low_usd: number;
+    value_low_per_capital: number;
+    cost_as_share_of_low_value: number;
+    break_even_share: number;
   };
   farm_steps: string[];
 }
@@ -173,6 +179,9 @@ export interface RadarRow {
   watchlisted: boolean;
   implied_multiple: number;
   value_low_usd: number;
+  value_low_per_capital: number;
+  cost_as_share_of_low_value: number;
+  break_even_share: number;
   readiness: number;
   verdict: 'farm' | 'thin' | 'skip';
   verdict_reason: string;
@@ -441,6 +450,7 @@ export function modelConstants(snapshot: Snapshot): ModelConstants {
  * value landed inside the band are what the page states.
  */
 export function testCalibration(snapshot: Snapshot): ModelTest {
+  const rolling = rollingOrigin(snapshot);
   const dated = compProtocols(snapshot)
     .filter((p) => p.listed_at !== null)
     .sort((a, b) => (a.listed_at ?? '').localeCompare(b.listed_at ?? ''));
@@ -457,6 +467,9 @@ export function testCalibration(snapshot: Snapshot): ModelTest {
       test_median_factor: 1,
       test_within_2x_share: 0,
       test_band_coverage: 0,
+      folds: rolling.foldFactors.length,
+      fold_median_factors: rolling.foldFactors,
+      fold_exponents: rolling.foldExponents,
     };
   }
   const octaves: number[] = [];
@@ -478,6 +491,51 @@ export function testCalibration(snapshot: Snapshot): ModelTest {
     test_median_factor: Math.round(Math.pow(2, medianOctaves) * 100) / 100,
     test_within_2x_share: Math.round((octaves.filter((o) => o <= 1).length / octaves.length) * 1000) / 1000,
     test_band_coverage: Math.round((inside / test.length) * 1000) / 1000,
+    folds: rolling.foldFactors.length,
+    fold_median_factors: rolling.foldFactors,
+    fold_exponents: rolling.foldExponents,
+  };
+}
+
+/**
+ * Rolling-origin cross-validation: the comps are split into four time-ordered folds, and each fold
+ * is predicted by a curve fitted on the comps tracked before it. Four independent tests of the same
+ * procedure, so the page can show how much the result moves from split to split rather than
+ * one number that happens to be favourable.
+ */
+export function rollingOrigin(snapshot: Snapshot, folds = 4): {
+  foldFactors: number[];
+  foldExponents: number[];
+  medianFactor: number;
+  worstFactor: number;
+  exponentSpread: number;
+} {
+  const dated = compProtocols(snapshot)
+    .filter((p) => p.listed_at !== null)
+    .sort((a, b) => (a.listed_at ?? '').localeCompare(b.listed_at ?? ''));
+  const foldSize = Math.floor(dated.length / (folds + 1));
+  const foldFactors: number[] = [];
+  const foldExponents: number[] = [];
+  for (let fold = 1; fold <= folds; fold++) {
+    const train = dated.slice(0, fold * foldSize);
+    const test = dated.slice(fold * foldSize, (fold + 1) * foldSize);
+    if (train.length < 8 || test.length < 4) continue;
+    const curve = fitSizeCurve(train, 1_000_000);
+    const errors = test.map((p) =>
+      Math.abs(Math.log2(Math.max(p.mcap_usd!, 1) / Math.pow(10, curve.intercept + curve.exponent * Math.log10(Math.max(p.tvl_usd, 1_000_000))))),
+    );
+    errors.sort((a, b) => a - b);
+    foldFactors.push(Math.round(Math.pow(2, quantile(errors, 0.5)) * 100) / 100);
+    foldExponents.push(Math.round(curve.exponent * 1e4) / 1e4);
+  }
+  const sorted = foldFactors.slice().sort((a, b) => a - b);
+  const exponents = foldExponents.slice().sort((a, b) => a - b);
+  return {
+    foldFactors,
+    foldExponents,
+    medianFactor: sorted.length ? quantile(sorted, 0.5) : 0,
+    worstFactor: sorted.length ? sorted[sorted.length - 1]! : 0,
+    exponentSpread: exponents.length ? Math.round((exponents[exponents.length - 1]! - exponents[0]!) * 1e4) / 1e4 : 0,
   };
 }
 
@@ -663,9 +721,14 @@ export function farmVerdict(
   const totalCost = Math.round((gas * actions + 0.5) * 100) / 100;
   const costShare = totalCost / capital;
   const growth = typeof p.change_7d === 'number' && Number.isFinite(p.change_7d) ? p.change_7d : 0;
-  // The plan's economics: what it costs to run and how much of the capital it ties up. What the
-  // farmer captures is a share of the token, and the snapshot does not say how that share is set,
-  // so no value is claimed for it here. The protocol's own implied value is on the row.
+  // The plan's economics, netted at the band's low end. The protocol's token would be worth
+  // impliedLow at the bottom of the range the market itself spans; the plan costs totalCost to run
+  // and ties up capital. What share of that low-end value the farmer would need to capture for the
+  // gas to pay for itself is the break-even share: the farm is worth doing if the points programme
+  // pays even a tiny fraction of what the token is worth at the pessimistic end.
+  const perCapital = impliedLow / capital;
+  const costShareOfLow = totalCost / impliedLow;
+  const breakEvenShare = totalCost / impliedLow;
   const base = {
     capital_usd: capital,
     gas_per_action_usd: gas,
@@ -675,6 +738,9 @@ export function farmVerdict(
     hold_days: hold,
     weeks,
     value_low_usd: impliedLow,
+    value_low_per_capital: Math.round(perCapital * 10) / 10,
+    cost_as_share_of_low_value: Math.round(costShareOfLow * 1e6) / 1e6,
+    break_even_share: Math.round(breakEvenShare * 1e8) / 1e8,
   };
   if (p.tvl_usd < 25_000_000) {
     return {
@@ -697,10 +763,17 @@ export function farmVerdict(
       reason: `TVL is down ${Math.abs(growth).toFixed(1)}% in seven days: the position may be exited before it counts`,
     };
   }
+  if (perCapital < 1000) {
+    return {
+      ...base,
+      verdict: 'thin',
+      reason: `at the band's low end the token is worth ${fmtMultiple(impliedLow)}, only ${perCapital.toFixed(0)}x the $${capital} at risk: the gas is $${totalCost.toFixed(2)}, so the plan needs ${(breakEvenShare * 100).toFixed(5)}% of the token to pay for itself`,
+    };
+  }
   return {
     ...base,
     verdict: 'farm',
-    reason: `$${totalCost.toFixed(2)} of gas on $${capital} of capital over ${weeks} weeks, with $${(p.tvl_usd / 1e6).toFixed(0)}M of TVL behind it; the token's low-end value is ${fmtMultiple(impliedLow)}`,
+    reason: `$${totalCost.toFixed(2)} of gas on $${capital} of capital over ${weeks} weeks; at the band's low end the token is worth ${fmtMultiple(impliedLow)}, ${perCapital.toFixed(0)}x the capital, and the gas is ${(costShareOfLow * 100).toFixed(4)}% of it`,
   };
 }
 
@@ -906,6 +979,9 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
       readiness: readinessOf(row.tvl_usd, row.change_7d, row.age_days),
       verdict: row.farm.verdict,
       value_low_usd: row.farm.value_low_usd,
+      value_low_per_capital: row.farm.value_low_per_capital,
+      cost_as_share_of_low_value: row.farm.cost_as_share_of_low_value,
+      break_even_share: row.farm.break_even_share,
       verdict_reason: row.farm.reason,
       capital_usd: row.farm.capital_usd,
       total_cost_usd: row.farm.total_cost_usd,

@@ -351,17 +351,40 @@ tbody td:nth-child(8) { width: 90px; }
 .detail-tab.on { color: #05231a; background: var(--accent); border-color: var(--accent); font-weight: 600; }
 .detail-tabbody h4:first-child { margin-top: 16px; }
 
-.palette-box { max-width: 460px; }
-.palette-box h3 { font-size: 15px; margin-bottom: 12px; }
-.palette-box dl { margin: 0 0 14px; display: grid; gap: 6px; }
-.palette-box dl div { display: grid; grid-template-columns: 56px 1fr; gap: 10px; align-items: baseline; }
-.palette-box dt {
-  font-family: var(--mono); font-size: 11.5px; color: var(--accent); border: 1px solid var(--line);
-  border-radius: 5px; padding: 1px 6px; text-align: center;
-}
-.palette-box dd { margin: 0; color: var(--muted); font-size: 12.5px; }
+/* ---------- research note ---------- */
 
-/* ---------- foot ---------- */
+.note {
+  margin: 18px 28px 4px; padding: 16px 20px 14px; border: 1px solid var(--line-soft);
+  border-radius: var(--radius); background: rgba(8, 11, 18, 0.4);
+}
+.note-head h2 { font-size: 15px; }
+.note-head p { margin: 4px 0 0; color: var(--muted); font-size: 12.5px; }
+.note-grid { display: grid; gap: 22px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); margin-top: 12px; }
+.note-grid h3 { font-size: 12px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--accent); margin-bottom: 6px; }
+.note-grid p { margin: 0 0 8px; color: #cbd5e8; font-size: 12.5px; }
+.note-list { margin: 0; padding-left: 18px; color: #cbd5e8; font-size: 12.5px; display: grid; gap: 7px; }
+.note-list li::marker { color: var(--faint); }
+.fold-table { width: auto; margin-top: 6px; }
+.fold-table thead th { position: static; background: none; }
+.fold-table tbody td { padding: 4px 12px 4px 0; border: 0; font-size: 12px; }
+.fold-table .num { text-align: left; }
+
+.palette-box { max-width: 520px; }
+.palette-box input[type="search"] { width: 100%; margin: 10px 0 8px; }
+.palette-list { list-style: none; margin: 0; padding: 0; max-height: 320px; overflow-y: auto; display: grid; gap: 2px; }
+.palette-list li { border-radius: 7px; }
+.palette-list button {
+  appearance: none; background: transparent; border: 0; color: var(--text); font: inherit; font-size: 12.5px;
+  display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: baseline; width: 100%;
+  text-align: left; padding: 7px 10px; border-radius: 7px; cursor: pointer;
+}
+.palette-list button:hover, .palette-list button.on { background: rgba(63, 224, 164, 0.12); }
+.palette-list .p-sub { color: var(--faint); font-family: var(--mono); font-size: 11px; }
+.palette-list .p-kind { color: var(--accent); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; }
+.palette-keys { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; color: var(--faint); font-size: 11px; }
+.palette-keys b { color: var(--accent); font-family: var(--mono); }
+
+.palette-box h3 { font-size: 15px; margin-bottom: 12px; }
 
 .foot {
   border-top: 1px solid var(--line-soft); padding: 18px 28px 30px; color: var(--faint); font-size: 12px;

@@ -97,10 +97,12 @@
       <option value="growth">7-day change</option>
       <option value="age">Days with no token</option>
       <option value="net">Implied mcap / TVL</option>
+      <option value="lowmult">Low-end value x capital</option>
       <option value="cost">Farm cost</option>
       <option value="readiness">Readiness</option>
       <option value="name">Name</option>
     </select>
+
   </div>
   <button type="button" id="dir" class="dir" aria-label="Reverse the order">&#9660;</button>
   <div class="field actions">
@@ -115,6 +117,30 @@
 <section id="live" hidden></section>
 <section id="pins" hidden></section>
 <section id="excluded" hidden></section>
+
+<section class="note" id="note">
+  <div class="note-head">
+    <h2>Research note: what this model earns, and what it cannot do</h2>
+    <p>The bounty asks for a radar, not a promise. This page states the model's limits before it states its prices.</p>
+  </div>
+  <div class="note-grid">
+    <div>
+      <h3>How it is tested</h3>
+      <p id="note-test"></p>
+      <p>The comps are ordered by the day the snapshot began tracking them. Each fold is predicted by a curve fitted only on the comps tracked before it, so no protocol is ever predicted by a curve that has seen it.</p>
+      <table class="fold-table"><tbody id="note-folds"></tbody></table>
+    </div>
+    <div>
+      <h3>What the model does not claim</h3>
+      <ul class="note-list">
+        <li>It does not predict that a token is issued, or when. The board ranks protocols whose own token does not exist yet; whether one ever issues is outside the snapshot.</li>
+        <li>It does not price a farmer's share of that token. The snapshot says nothing about how an allocation would be set, so the board states the protocol's value and the plan's cost separately rather than multiplying them into a number the data cannot support.</li>
+        <li>It does not name a protocol. The same function scores every row, and the page recomputes each one from the snapshot's figures and prints how many it reproduced.</li>
+        <li>It is not a price. A wide band is the honest reading of a market where one protocol's token trades at a hundredth of its TVL and another's at its TVL.</li>
+      </ul>
+    </div>
+  </div>
+</section>
 
 <section class="method" id="method">
   <div class="method-head">
@@ -163,6 +189,7 @@
       <span class="f-note">The size curve refitted on 200 resamples of the comps: the spread of the exponent and how often the top ten holds.</span>
     </li>
   </ol>
+
   <p class="test-line" id="test-line"></p>
 
   <div class="sandbox" id="sandbox">
@@ -201,22 +228,10 @@
   <svg id="chart" viewBox="0 0 900 260" role="img" aria-label="Implied value against TVL, with the fitted size curve"></svg>
 </section>
 
+
 <div class="scrim" id="scrim" hidden></div>
 <aside class="detail" id="detail" aria-label="Protocol detail" hidden></aside>
 
-<div class="palette" id="palette" hidden role="dialog" aria-label="Keyboard shortcuts">
-  <div class="palette-box">
-    <h3>Shortcuts</h3>
-    <dl>
-      <div><dt>/</dt><dd>focus the search box</dd></div>
-      <div><dt>p</dt><dd>pin or unpin the selected row</dd></div>
-      <div><dt>c</dt><dd>toggle compare mode</dd></div>
-      <div><dt>l</dt><dd>switch between the pre-token and already-trading views</dd></div>
-      <div><dt>Esc</dt><dd>close the detail, the compare panel and this box</dd></div>
-    </dl>
-    <button type="button" id="palette-close" class="ghost">Close</button>
-  </div>
-</div>
 
 <div class="compare" id="compare" hidden aria-label="Compare selected protocols">
   <div class="compare-box">
@@ -225,6 +240,17 @@
       <button type="button" id="compare-close" class="ghost">Close</button>
     </div>
     <div id="compare-body"></div>
+  </div>
+</div>
+
+<div class="palette" id="palette" hidden role="dialog" aria-label="Command palette">
+  <div class="palette-box">
+    <h3>Command palette</h3>
+    <input type="search" id="palette-input" placeholder="a protocol, a category, or a command" autocomplete="off" spellcheck="false">
+    <ul class="palette-list" id="palette-list"></ul>
+    <div class="palette-keys">
+      <span><b>/</b> search</span><span><b>p</b> pin</span><span><b>c</b> compare</span><span><b>l</b> view</span><span><b>Esc</b> close</span>
+    </div>
   </div>
 </div>
 
