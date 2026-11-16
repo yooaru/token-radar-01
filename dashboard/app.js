@@ -15,6 +15,7 @@
   if (!DATA) return;
 
   var ROWS = DATA.rows || [];
+  var EXCLUDED = DATA.excluded || [];
   var LIVE = DATA.live || [];
   var MODEL = DATA.model;
   var state = {
@@ -59,6 +60,8 @@
     compareBody: document.getElementById('compare-body'),
     compareClose: document.getElementById('compare-close'),
     csv: document.getElementById('csv'),
+    excluded: document.getElementById('excluded'),
+    tabExcluded: document.getElementById('tab-excluded'),
     palette: document.getElementById('palette'),
     paletteToggle: document.getElementById('palette-toggle'),
     paletteClose: document.getElementById('palette-close'),
@@ -155,7 +158,7 @@
     if (state.sort === 'tvl') return row.tvl_usd;
     if (state.sort === 'growth') return row.change_7d === null ? -999 : row.change_7d;
     if (state.sort === 'age') return row.age_days === null ? -1 : row.age_days;
-    if (state.sort === 'net') return row.value_per_capital;
+    if (state.sort === 'net') return row.implied_multiple;
     if (state.sort === 'cost') return row.total_cost_usd;
     if (state.sort === 'readiness') return row.readiness;
     if (state.sort === 'name') return row.name.toLowerCase();
@@ -242,7 +245,7 @@
         node('th', { class: 'sortable num', 'data-sort': 'tvl', text: 'TVL' }),
         node('th', { class: 'sortable num', 'data-sort': 'growth', text: '7d' }),
         node('th', { class: 'sortable num', 'data-sort': 'age', text: 'No token for' }),
-        node('th', { class: 'sortable num', 'data-sort': 'net', text: 'Net per $1k' }),
+        node('th', { class: 'sortable num', 'data-sort': 'net', text: 'Implied mcap / TVL' }),
         node('th', { class: 'sortable num', 'data-sort': 'cost', text: 'Farm cost' }),
         node('th', { class: 'sortable num', 'data-sort': 'implied', text: 'Implied value' }),
       ]),
@@ -281,7 +284,7 @@
         growthCell(row),
         node('td', { class: 'num', text: fmtAge(row.age_days) }),
         node('td', null, [node('span', { class: 'verdict ' + row.verdict, text: row.verdict })]),
-        node('td', { class: 'num', text: '$' + Math.round(row.value_per_capital / 1000) + 'k' }),
+        node('td', { class: 'num', text: row.implied_multiple.toFixed(3) + 'x' }),
         node('td', { class: 'num', text: '$' + row.total_cost_usd.toFixed(2) }),
         valueTd,
       ];
@@ -338,6 +341,28 @@
       node('span', { class: 'fname', text: label }),
       node('span', { class: 'fbar' }, [node('span', { style: 'width:' + Math.round(Math.max(0, Math.min(1, share)) * 100) + '%' })]),
       node('span', { class: 'fval', text: value }),
+    ]);
+  }
+
+  // The protocols set aside: each one names the reason it is not a candidate for its own token.
+  function excludedTable(rows) {
+    var body = node('tbody');
+    rows.forEach(function (r) {
+      body.appendChild(node('tr', null, [
+        node('td', { text: r.name }),
+        node('td', { text: r.category || 'Uncategorised' }),
+        node('td', { class: 'num', text: fmtUsd(r.tvl_usd) }),
+        node('td', { class: 'reason', text: r.reason }),
+      ]));
+    });
+    return node('table', { class: 'excluded-table' }, [
+      node('thead', null, [node('tr', null, [
+        node('th', { text: 'Protocol' }),
+        node('th', { text: 'Category' }),
+        node('th', { class: 'num', text: 'TVL' }),
+        node('th', { text: 'Set aside because' }),
+      ])]),
+      body,
     ]);
   }
 
@@ -545,6 +570,7 @@
     el.tabPre.addEventListener('click', function () { setTab('pre'); });
     el.tabLive.addEventListener('click', function () { setTab('live'); });
     el.tabPins.addEventListener('click', function () { setTab('pins'); });
+    el.tabExcluded.addEventListener('click', function () { setTab('excluded'); });
     el.compareToggle.addEventListener('click', function () { setCompareMode(!state.compareMode); });
     el.compareClose.addEventListener('click', function () { setCompareMode(false); });
     el.csv.addEventListener('click', exportCsv);
@@ -587,6 +613,7 @@
     el.tabPre.setAttribute('aria-selected', tab === 'pre' ? 'true' : 'false');
     el.tabLive.setAttribute('aria-selected', tab === 'live' ? 'true' : 'false');
     el.tabPins.setAttribute('aria-selected', tab === 'pins' ? 'true' : 'false');
+    el.tabExcluded.setAttribute('aria-selected', tab === 'excluded' ? 'true' : 'false');
     render();
   }
 
@@ -635,6 +662,7 @@
       el.live.hidden = false;
       el.board.hidden = true;
       el.pins.hidden = true;
+      el.excluded.hidden = true;
       el.live.appendChild(node('h3', { class: 'lede', text: "Protocols whose token already trades: the market's own prices, and the calibration set" }));
       el.live.appendChild(liveTable(LIVE));
       el.count.textContent = LIVE.length + ' protocols with a token already trading';
@@ -642,8 +670,8 @@
     }
     if (state.tab === 'pins') {
       el.pins.hidden = false;
-      el.board.hidden = true;
       el.live.hidden = true;
+      el.excluded.hidden = true;
       var pinned = state.pins.map(rowBySlug).filter(Boolean);
       if (!pinned.length) {
         el.pins.appendChild(node('p', { class: 'empty', text: 'No protocol pinned yet. Press the star beside a row to keep it here.' }));
@@ -654,8 +682,19 @@
       el.count.textContent = pinned.length + ' pinned';
       return;
     }
+    if (state.tab === 'excluded') {
+      el.excluded.hidden = false;
+      el.board.hidden = true;
+      el.live.hidden = true;
+      el.pins.hidden = true;
+      el.excluded.appendChild(node('h3', { class: 'lede', text: 'Every protocol that records no token and is set aside, with the reason: ' + EXCLUDED.length + ' of ' + DATA.audited_no_token + ', the rest on the board' }));
+      el.excluded.appendChild(excludedTable(EXCLUDED));
+      el.count.textContent = EXCLUDED.length + ' set aside of ' + DATA.audited_no_token + ' protocols with no token';
+      return;
+    }
     el.live.hidden = true;
     el.pins.hidden = true;
+    el.excluded.hidden = true;
     el.board.hidden = false;
     if (!rows.length) {
       el.board.appendChild(node('p', { class: 'empty', text: 'No protocol matches these filters. Clear one and the board comes back.' }));
@@ -665,6 +704,12 @@
     var watchRows = rows.filter(function (r) { return r.watchlisted; }).length;
     el.count.textContent = rows.length + ' of ' + ROWS.length + ' ranked  ·  ' + watchRows + ' on the watchlist  ·  ' +
       agreement() + '/' + ROWS.length + ' rows reproduced from the model';
+    document.getElementById('cov-ranked').textContent = String(DATA.board_size);
+    document.getElementById('cov-excluded').textContent = String(EXCLUDED.length);
+    document.getElementById('boot-line').textContent =
+      'exponent ' + DATA.bootstrap.exponent_p10.toFixed(2) + ' to ' + DATA.bootstrap.exponent_p90.toFixed(2) +
+      ', top ten holds in ' + Math.round(DATA.bootstrap.top10_stability * 100) + '% of ' + DATA.bootstrap.draws + ' resamples';
+    document.getElementById('stat-multiple').textContent = ROWS.length ? ROWS[0].implied_multiple.toFixed(3) + 'x' : 'n/a';
   }
 
   function renderStats() {
@@ -675,7 +720,7 @@
     document.getElementById('stat-audited').textContent = String(DATA.audited_no_token);
     document.getElementById('stat-comps').textContent = String(DATA.comp_set_size);
     document.getElementById('stat-date').textContent = DATA.as_of;
-    document.getElementById('stat-net').textContent = '$' + Math.round(ROWS.length ? ROWS[0].value_per_capital / 1000 : 0) + 'k';
+    document.getElementById('stat-multiple').textContent = ROWS.length ? ROWS[0].implied_multiple.toFixed(3) + 'x' : 'n/a';
     document.getElementById('comp-count').textContent = DATA.comp_set_size + ' traded protocols';
     document.getElementById('band-low').textContent = fmtMult(MODEL.band_low_factor);
     document.getElementById('band-high').textContent = fmtMult(MODEL.band_high_factor);

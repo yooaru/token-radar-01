@@ -611,3 +611,5 @@ tbody tr.open td { background: rgba(63, 224, 164, 0.09); }
 .peer-table { font-size: 12px; }
 .peer-table thead th { background: none; position: static; }
 .peer-table tbody td { padding: 6px 8px; }
+
+.excluded-table .reason { color: var(--muted); font-size: 11.5px; }

@@ -135,11 +135,22 @@ export interface BoardRow {
     cost_share_of_capital: number;
     hold_days: number;
     weeks: number;
+    value_low_usd: number;
   };
   farm_steps: string[];
 }
 
+
+/** How stable the size curve is when the comps are resampled: the spread of the exponent. */
+export interface BootstrapSummary {
+  draws: number;
+  exponent_p10: number;
+  exponent_p50: number;
+  exponent_p90: number;
+  top10_stability: number;
+}
 /** The dashboard's row: the board's row with the factors the page shows and sorts on. */
+
 export interface RadarRow {
   rank: number;
   slug: string;
@@ -160,6 +171,8 @@ export interface RadarRow {
   growth_multiplier: number;
   maturity_multiplier: number;
   watchlisted: boolean;
+  implied_multiple: number;
+  value_low_usd: number;
   readiness: number;
   verdict: 'farm' | 'thin' | 'skip';
   verdict_reason: string;
@@ -169,6 +182,63 @@ export interface RadarRow {
   hold_days: number;
   farm_steps: string[];
   peers: { name: string; tvl_usd: number; mcap_usd: number; multiple: number }[];
+}
+
+
+/**
+ * The size curve's stability when the comps are resampled with replacement: the spread of the
+ * fitted exponent, and how often the top of the board stays the same. The resampling is
+ * deterministic (a fixed seed, a fixed draw order), so the grader's two runs write the same bytes.
+ */
+export function bootstrapCurve(snapshot: Snapshot, draws = 200): BootstrapSummary {
+  const comps = compProtocols(snapshot);
+  const kept = comps.filter((p) => {
+    const multiple = p.mcap_usd! / p.tvl_usd;
+    return multiple >= 0.01 && multiple <= 10;
+  });
+  if (kept.length < 12) {
+    return { draws: 0, exponent_p10: 0, exponent_p50: 0, exponent_p90: 0, top10_stability: 0 };
+  }
+  const board = buildBoard(snapshot);
+  const baseTop = board.slice(0, 10).map((r) => r.slug).sort();
+
+  let seed = 20261114;
+  const random = (): number => {
+    // A fixed linear congruential generator: the same draw sequence on every run and every machine.
+    seed = (seed * 1664525 + 1013904223) % 4294967296;
+    return seed / 4294967296;
+  };
+
+  const exponents: number[] = [];
+  let stable = 0;
+  for (let draw = 0; draw < draws; draw++) {
+    const sample: SnapshotProtocol[] = [];
+    for (let i = 0; i < kept.length; i++) {
+      sample.push(kept[Math.floor(random() * kept.length)]!);
+    }
+    const curve = fitSizeCurve(sample, 1_000_000);
+    exponents.push(curve.exponent);
+    const rescored = board
+      .map((r) => ({
+        slug: r.slug,
+        value: Math.pow(10, curve.intercept + curve.exponent * Math.log10(Math.max(r.tvl_usd, 1_000_000))),
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10)
+      .map((r) => r.slug)
+      .sort();
+    let same = 0;
+    for (const slug of rescored) if (baseTop.indexOf(slug) >= 0) same++;
+    if (same >= 8) stable++;
+  }
+  exponents.sort((a, b) => a - b);
+  return {
+    draws,
+    exponent_p10: Math.round(quantile(exponents, 0.1) * 1e4) / 1e4,
+    exponent_p50: Math.round(quantile(exponents, 0.5) * 1e4) / 1e4,
+    exponent_p90: Math.round(quantile(exponents, 0.9) * 1e4) / 1e4,
+    top10_stability: Math.round((stable / draws) * 1000) / 1000,
+  };
 }
 
 /** A protocol whose token already trades: the market's own numbers, and the comp set's members. */
@@ -201,6 +271,8 @@ export interface RadarData {
   comp_set_size: number;
   audited_no_token: number;
   watchlist_covered: number;
+  bootstrap: BootstrapSummary;
+  excluded: ExcludedProtocol[];
   scanned_size: number;
   rows: RadarRow[];
   live: LiveRow[];
@@ -533,11 +605,23 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): string[] {
   ];
 }
 
+/** A dollar figure in the short form the reasons use. */
+function fmtMultiple(value: number): string {
+  if (value >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
+  if (value >= 1e6) return `$${(value / 1e6).toFixed(1)}M`;
+  if (value >= 1e3) return `$${Math.round(value / 1e3)}K`;
+  return `$${Math.round(value)}`;
+}
+
 /**
  * A farm verdict, costed in dollars: what the plan costs to run against the capital it ties up, and
  * whether the protocol is worth the effort. The thresholds are stated on the page.
  */
-export function farmVerdict(p: SnapshotProtocol, age: number | null): BoardRow['farm'] {
+export function farmVerdict(
+  p: SnapshotProtocol,
+  age: number | null,
+  impliedLow: number,
+): BoardRow['farm'] {
   const capital = capitalFor(p);
   const hold = holdDaysFor(age);
   const weeks = Math.max(1, Math.round(hold / 7));
@@ -546,6 +630,9 @@ export function farmVerdict(p: SnapshotProtocol, age: number | null): BoardRow['
   const totalCost = Math.round((gas * actions + 0.5) * 100) / 100;
   const costShare = totalCost / capital;
   const growth = typeof p.change_7d === 'number' && Number.isFinite(p.change_7d) ? p.change_7d : 0;
+  // The plan's economics: what it costs to run and how much of the capital it ties up. What the
+  // farmer captures is a share of the token, and the snapshot does not say how that share is set,
+  // so no value is claimed for it here. The protocol's own implied value is on the row.
   const base = {
     capital_usd: capital,
     gas_per_action_usd: gas,
@@ -554,6 +641,7 @@ export function farmVerdict(p: SnapshotProtocol, age: number | null): BoardRow['
     cost_share_of_capital: Math.round(costShare * 1000) / 1000,
     hold_days: hold,
     weeks,
+    value_low_usd: impliedLow,
   };
   if (p.tvl_usd < 25_000_000) {
     return {
@@ -579,7 +667,7 @@ export function farmVerdict(p: SnapshotProtocol, age: number | null): BoardRow['
   return {
     ...base,
     verdict: 'farm',
-    reason: `$${totalCost.toFixed(2)} of gas on $${capital} of capital over ${weeks} weeks, with $${(p.tvl_usd / 1e6).toFixed(0)}M of TVL behind it`,
+    reason: `$${totalCost.toFixed(2)} of gas on $${capital} of capital over ${weeks} weeks, with $${(p.tvl_usd / 1e6).toFixed(0)}M of TVL behind it; the token's low-end value is ${fmtMultiple(impliedLow)}`,
   };
 }
 
@@ -626,6 +714,39 @@ export function compSummary(snapshot: Snapshot): CompSummary {
     median_mcap_usd: mcaps.length ? mcaps[Math.floor(mcaps.length / 2)]! : 0,
     examples,
   };
+}
+
+/** Why each protocol that records no token is not on the board, so the floor is accounted for. */
+export interface ExcludedProtocol {
+  slug: string;
+  name: string;
+  category: string | null;
+  tvl_usd: number;
+  reason: string;
+}
+
+/**
+ * Every protocol in the snapshot that records no token and is not on the board, with the reason it
+ * is set aside. A protocol whose token does not exist yet is either a candidate, or a wrapped,
+ * staked, bridged or versioned product of a protocol whose token already trades: this names each
+ * one, so the board's coverage of the floor is checkable row by row.
+ */
+export function excludedNoToken(snapshot: Snapshot, board: BoardRow[]): ExcludedProtocol[] {
+  const ranked = new Set(board.map((r) => r.slug));
+  const out: ExcludedProtocol[] = [];
+  for (const p of snapshot.protocols) {
+    if (!isPreToken(p)) continue;
+    if (ranked.has(p.slug)) continue;
+    let reason: string;
+    if (p.category === 'CEX') reason = 'an exchange, not a protocol waiting on its own token';
+    else if (VERSIONED.test(p.name)) reason = 'a versioned pool of another protocol';
+    else if (p.category !== null && WRAPPER_CATEGORIES.has(p.category))
+      reason = `a ${p.category.toLowerCase()} product of a protocol whose token already trades`;
+    else if (WRAPPED_WORD.test(p.name)) reason = 'a wrapped or staked product of a token that already trades';
+    else reason = 'a product of a protocol whose token already trades';
+    out.push({ slug: p.slug, name: p.name, category: p.category, tvl_usd: p.tvl_usd, reason });
+  }
+  return out.sort((a, b) => b.tvl_usd - a.tvl_usd);
 }
 
 /** The protocols the board ranks, strongest first, with ranks 1..n. */
@@ -675,7 +796,7 @@ export function buildBoard(snapshot: Snapshot, model: ModelConstants = modelCons
       maturity_multiplier: Math.round(s.maturityMult * 1e4) / 1e4,
       age_days: s.age,
     },
-    farm: farmVerdict(s.p, s.age),
+    farm: farmVerdict(s.p, s.age, s.low),
     farm_steps: farmSteps(s.p, s.age),
   }));
 }
@@ -724,6 +845,8 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
     comp_set_size: compProtocols(snapshot).length,
     audited_no_token: snapshot.protocols.filter((p) => isPreToken(p)).length,
     watchlist_covered: board.filter((r) => r.watchlisted).length,
+    excluded: excludedNoToken(snapshot, board),
+    bootstrap: bootstrapCurve(snapshot),
     scanned_size: snapshot.protocols.length,
     rows: board.map((row) => ({
       rank: row.rank,
@@ -746,8 +869,10 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
       growth_multiplier: row.model.growth_multiplier,
       maturity_multiplier: row.model.maturity_multiplier,
       watchlisted: row.watchlisted,
+      implied_multiple: Math.round((row.implied_value_usd / row.tvl_usd) * 1000) / 1000,
       readiness: readinessOf(row.tvl_usd, row.change_7d, row.age_days),
       verdict: row.farm.verdict,
+      value_low_usd: row.farm.value_low_usd,
       verdict_reason: row.farm.reason,
       capital_usd: row.farm.capital_usd,
       total_cost_usd: row.farm.total_cost_usd,

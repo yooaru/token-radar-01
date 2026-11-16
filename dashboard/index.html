@@ -23,8 +23,8 @@
     <div><dt>ranked</dt><dd id="stat-ranked">&mdash;</dd></div>
     <div><dt>early</dt><dd id="stat-early">&mdash;</dd></div>
     <div><dt>no token yet</dt><dd id="stat-audited">&mdash;</dd></div>
+    <div><dt>implied mcap / TVL</dt><dd id="stat-multiple">&mdash;</dd></div>
     <div><dt>calibrated on</dt><dd id="stat-comps">&mdash;</dd></div>
-    <div><dt>net per $1k</dt><dd id="stat-net">&mdash;</dd></div>
     <div><dt>snapshot</dt><dd id="stat-date">&mdash;</dd></div>
   </dl>
 </header>
@@ -66,9 +66,14 @@
       <span class="f-note">This entry's own claim about what the token would be worth. Not a quote, and not a promise that a token comes.</span>
     </li>
     <li>
-      <span class="f-name">verdict</span>
-      <span class="f-body">farm &middot; thin &middot; skip</span>
-      <span class="f-note">The farm plan's gas against the capital it ties up, and the protocol's own seven-day direction.</span>
+      <span class="f-name">coverage</span>
+      <span class="f-body"><span id="cov-ranked">198</span> ranked, <span id="cov-excluded">144</span> set aside</span>
+      <span class="f-note">Every protocol in the snapshot that records no token is either on the board or named, with its reason, in the Set aside view.</span>
+    </li>
+    <li>
+      <span class="f-name">stability</span>
+      <span class="f-body" id="boot-line">bootstrap</span>
+      <span class="f-note">The size curve refitted on 200 resamples of the comps: the spread of the exponent and how often the top ten holds.</span>
     </li>
   </ol>
   <p class="test-line" id="test-line"></p>
@@ -100,6 +105,7 @@
   <button type="button" role="tab" id="tab-pre" aria-selected="true" aria-controls="board">Pre-token radar</button>
   <button type="button" role="tab" id="tab-live" aria-selected="false" aria-controls="live">Already trading</button>
   <button type="button" role="tab" id="tab-pins" aria-selected="false" aria-controls="pins">Shortlist</button>
+  <button type="button" role="tab" id="tab-excluded" aria-selected="false" aria-controls="excluded">Set aside</button>
 </nav>
 
 <section class="controls" id="controls">
@@ -144,6 +150,7 @@
     </select>
   </div>
   <div class="field check">
+
     <input type="checkbox" id="watch-only">
     <label for="watch-only">Watchlist only</label>
   </div>
@@ -154,7 +161,7 @@
       <option value="tvl">TVL</option>
       <option value="growth">7-day change</option>
       <option value="age">Days with no token</option>
-      <option value="net">Net per $1k at risk</option>
+      <option value="net">Implied mcap / TVL</option>
       <option value="cost">Farm cost</option>
       <option value="readiness">Readiness</option>
       <option value="name">Name</option>
@@ -172,6 +179,7 @@
 <main id="board" tabindex="-1" aria-busy="true"></main>
 <section id="live" hidden></section>
 <section id="pins" hidden></section>
+<section id="excluded" hidden></section>
 
 <div class="scrim" id="scrim" hidden></div>
 <aside class="detail" id="detail" aria-label="Protocol detail" hidden></aside>
