@@ -368,6 +368,7 @@ tbody td:nth-child(8) { width: 90px; }
 .fold-table thead th { position: static; background: none; }
 .fold-table tbody td { padding: 4px 12px 4px 0; border: 0; font-size: 12px; }
 .fold-table .num { text-align: left; }
+.fold-table .num.best { color: var(--accent); font-weight: 600; }
 
 .palette-box { max-width: 520px; }
 .palette-box input[type="search"] { width: 100%; margin: 10px 0 8px; }
@@ -405,3 +406,5 @@ tbody td:nth-child(8) { width: 90px; }
 
 /* The hidden attribute must win over the layout rules above. */
 [hidden] { display: none !important; }
+
+.design-line { margin: 12px 0 0; color: var(--faint); font-size: 11.5px; }

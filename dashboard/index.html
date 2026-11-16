@@ -129,6 +129,9 @@
       <p id="note-test"></p>
       <p>The comps are ordered by the day the snapshot began tracking them. Each fold is predicted by a curve fitted only on the comps tracked before it, so no protocol is ever predicted by a curve that has seen it.</p>
       <table class="fold-table"><tbody id="note-folds"></tbody></table>
+      <h3>What each factor earns</h3>
+      <p>Each row is the same held-out folds with one part of the model removed, and the number is the median error in multiples of the true value: lower is better. The growth multiplier earns its place on price; the maturity factor is not a price factor at all &mdash; it ranks how long a protocol has run with no token, and the snapshot records no launch dates to test that against, so it is stated as a stated prior rather than as a fitted one.</p>
+      <table class="fold-table"><tbody id="note-ablation"></tbody></table>
     </div>
     <div>
       <h3>What the model does not claim</h3>
@@ -140,6 +143,7 @@
       </ul>
     </div>
   </div>
+  <p class="design-line">The page is drawn with one palette and one type ramp: a dark ink ground, a radar green for the model's own numbers, gold for the house watchlist and blue for tokens already trading. One system font stack, one spacing scale, no webfont, no image, no network.</p>
 </section>
 
 <section class="method" id="method">

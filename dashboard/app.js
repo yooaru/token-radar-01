@@ -766,13 +766,17 @@
   // does not make.
   function renderNote() {
     var test = DATA.test;
+    var bestFactor = null;
+    (DATA.ablation || []).forEach(function (a) { if (bestFactor === null || a.median_factor < bestFactor) bestFactor = a.median_factor; });
+    var bestLabel = '';
+    (DATA.ablation || []).forEach(function (a) { if (a.median_factor === bestFactor) bestLabel = a.label; });
     document.getElementById('note-test').textContent =
-      'The size curve was fitted on ' + test.train_size + ' protocols tracked before ' + test.split_day +
-      ' and read against ' + test.test_size + ' later ones it had never seen: median error ' +
-      test.test_median_factor.toFixed(1) + 'x, ' + Math.round(test.test_within_2x_share * 100) + '% within 2x, ' +
-      Math.round(test.test_band_coverage * 100) + '% inside the band. Rolling the split forward through ' +
-      test.folds + ' time-ordered folds gives median errors of ' + test.fold_median_factors.join('x, ') + 'x: ' +
-      'the procedure is worth a few times the price, not a precise one, and the band says so.';
+      'Rolling origin: the comps are ordered by the day the snapshot began tracking them, and each of ' +
+      test.folds + ' time-ordered folds is predicted by a curve fitted only on the comps tracked before it. ' +
+      'Median error ' + test.rolling_median_factor.toFixed(1) + 'x, worst fold ' + test.rolling_worst_factor.toFixed(1) + 'x, ' +
+      Math.round(test.test_band_coverage * 100) + '% of the held-out values inside the band. ' +
+      'Of the top ' + DATA.variant_top_size + ', ' + DATA.variant_top_overlap + ' are the same protocols under every version of the model measured below, so the head of the board is not an artefact of one choice. ' +
+      'The procedure is worth a few times the price, not a precise one, and the band says so.';
     var body = document.getElementById('note-folds');
     body.innerHTML = '';
     for (var i = 0; i < test.fold_median_factors.length; i++) {
@@ -782,6 +786,17 @@
         node('td', { class: 'num', text: 'exponent ' + test.fold_exponents[i].toFixed(3) }),
       ]));
     }
+    var abl = document.getElementById('note-ablation');
+    abl.innerHTML = '';
+    var best = null;
+    (DATA.ablation || []).forEach(function (a) { if (best === null || a.median_factor < best) best = a.median_factor; });
+    (DATA.ablation || []).forEach(function (a) {
+      abl.appendChild(node('tr', null, [
+        node('td', { text: a.label }),
+        node('td', { class: 'num' + (a.median_factor === best ? ' best' : ''), text: a.median_factor.toFixed(2) + 'x' }),
+        node('td', { class: 'num', text: a.fold_factors.map(function (f) { return f.toFixed(1) + 'x'; }).join(' ') }),
+      ]));
+    });
   }
 
   // ---------- CSV

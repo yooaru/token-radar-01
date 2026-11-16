@@ -89,6 +89,15 @@ export interface ModelTest {
   folds: number;
   fold_median_factors: number[];
   fold_exponents: number[];
+  rolling_median_factor: number;
+  rolling_worst_factor: number;
+}
+
+/** What each part of the model earns on its own, measured on the same held-out folds. */
+export interface ModelAblation {
+  label: string;
+  median_factor: number;
+  fold_factors: number[];
 }
 
 /** What the comp set is and what it says. */
@@ -277,11 +286,15 @@ export interface RadarData {
   board_size: number;
   early_size: number;
   live_size: number;
+  ablation: ModelAblation[];
+  variant_top_overlap: number;
+  variant_top_size: number;
   comp_set_size: number;
   audited_no_token: number;
   watchlist_covered: number;
   bootstrap: BootstrapSummary;
   excluded: ExcludedProtocol[];
+  ablation: ModelAblation[];
   scanned_size: number;
   rows: RadarRow[];
   live: LiveRow[];
@@ -468,6 +481,8 @@ export function testCalibration(snapshot: Snapshot): ModelTest {
       test_within_2x_share: 0,
       test_band_coverage: 0,
       folds: rolling.foldFactors.length,
+      rolling_median_factor: rolling.medianFactor,
+      rolling_worst_factor: rolling.worstFactor,
       fold_median_factors: rolling.foldFactors,
       fold_exponents: rolling.foldExponents,
     };
@@ -493,6 +508,8 @@ export function testCalibration(snapshot: Snapshot): ModelTest {
     test_band_coverage: Math.round((inside / test.length) * 1000) / 1000,
     folds: rolling.foldFactors.length,
     fold_median_factors: rolling.foldFactors,
+    rolling_median_factor: rolling.medianFactor,
+    rolling_worst_factor: rolling.worstFactor,
     fold_exponents: rolling.foldExponents,
   };
 }
@@ -538,6 +555,83 @@ export function rollingOrigin(snapshot: Snapshot, folds = 4): {
     exponentSpread: exponents.length ? Math.round((exponents[exponents.length - 1]! - exponents[0]!) * 1e4) / 1e4 : 0,
   };
 }
+
+/**
+ * What each part of the model earns on its own, measured on the same held-out folds: the size curve
+ * alone, with the growth multiplier, with the maturity multiplier, and with both. A factor that
+ * does not earn its place out of sample is reported as such rather than quietly kept.
+ */
+export function ablate(snapshot: Snapshot, folds = 4): ModelAblation[] {
+  const dated = compProtocols(snapshot)
+    .filter((p) => p.listed_at !== null)
+    .sort((a, b) => (a.listed_at ?? '').localeCompare(b.listed_at ?? ''));
+  const foldSize = Math.floor(dated.length / (folds + 1));
+  const variants: { label: string; growth: boolean; maturity: boolean }[] = [
+    { label: 'size curve only', growth: false, maturity: false },
+    { label: 'size curve + growth', growth: true, maturity: false },
+    { label: 'size curve + maturity', growth: false, maturity: true },
+    { label: 'size curve + growth + maturity', growth: true, maturity: true },
+  ];
+  const model = modelConstants(snapshot);
+  const out: ModelAblation[] = [];
+  for (const variant of variants) {
+    const foldFactors: number[] = [];
+    for (let fold = 1; fold <= folds; fold++) {
+      const train = dated.slice(0, fold * foldSize);
+      const test = dated.slice(fold * foldSize, (fold + 1) * foldSize);
+      if (train.length < 8 || test.length < 4) continue;
+      const curve = fitSizeCurve(train, model.min_tvl_usd);
+      const errors = test.map((p) => {
+        let predicted = Math.pow(10, curve.intercept + curve.exponent * Math.log10(Math.max(p.tvl_usd, model.min_tvl_usd)));
+        if (variant.growth) {
+          const growthPct = Math.min(
+            model.growth_cap,
+            Math.max(model.growth_floor, typeof p.change_7d === 'number' && Number.isFinite(p.change_7d) ? p.change_7d : 0),
+          );
+          predicted *= 1 + (growthPct / 100) * model.growth_weight;
+        }
+        if (variant.maturity) {
+          const age = ageDays(snapshot.as_of, p.listed_at) ?? model.unknown_age_days;
+          predicted *=
+            model.maturity_floor +
+            (Math.min(Math.max(age, 0), model.maturity_days) / model.maturity_days) * model.maturity_range;
+        }
+        return Math.abs(Math.log2(Math.max(p.mcap_usd!, 1) / predicted));
+      });
+      foldFactors.push(Math.round(Math.pow(2, quantile(errors.sort((a, b) => a - b), 0.5)) * 100) / 100);
+    }
+
+    if (foldFactors.length === 0) continue;
+    out.push({
+      label: variant.label,
+      median_factor: Math.round(quantile(foldFactors.slice().sort((a, b) => a - b), 0.5) * 100) / 100,
+      fold_factors: foldFactors,
+    });
+  }
+  return out;
+}
+
+/**
+ * How much the top of the board depends on the factors: the board is ranked under the shipped model
+ * and under each ablation variant, and the number of protocols in the top twenty that all of them
+ * agree on is reported. A board whose top survives every variant is not an artefact of one.
+ */
+function topStability(snapshot: Snapshot, model: ModelConstants, size = 20): { overlap: number; size: number } {
+  const variants: ModelConstants[] = [
+    model,
+    { ...model, growth_weight: 0 },
+    { ...model, maturity_range: 0, maturity_floor: 1 },
+    { ...model, growth_weight: 0, maturity_range: 0, maturity_floor: 1 },
+  ];
+  const tops = variants.map((variant) => {
+    const board = buildBoard(snapshot, variant);
+    return new Set(board.slice(0, size).map((r) => r.slug));
+  });
+  let overlap = 0;
+  for (const slug of tops[0]!) if (tops.every((t) => t.has(slug))) overlap++;
+  return { overlap, size };
+}
+
 
 /** The implied value and its band for one protocol under the model's constants. */
 export function impliedValue(
@@ -953,6 +1047,9 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
     watchlist_covered: board.filter((r) => r.watchlisted).length,
     excluded: excludedNoToken(snapshot, board),
     bootstrap: bootstrapCurve(snapshot),
+    ablation: ablate(snapshot),
+    variant_top_overlap: topStability(snapshot, model).overlap,
+    variant_top_size: topStability(snapshot, model).size,
     scanned_size: snapshot.protocols.length,
     rows: board.map((row) => ({
       rank: row.rank,
