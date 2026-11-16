@@ -579,6 +579,38 @@ function actionFor(p: SnapshotProtocol, capital: number, chain: string): string 
 }
 
 /**
+ * The action a points programme of this category counts: the mechanism, not a slogan. Each is the
+ * activity that kind of protocol's points programme measures, so a reader knows what to do rather
+ * than what to look for.
+ */
+function qualifyingAction(p: SnapshotProtocol, chain: string): string {
+  const c = (p.category ?? '').toLowerCase();
+  const name = p.name;
+  if (c.includes('risk curator') || c.includes('capital allocator'))
+    return `A vault deposit into ${name} on ${chain} counts on its own, but a curator points programme usually pays on the manager's own points, so count a deposit into a vault this curator manages and rebalance it once a week so the position is not idle.`;
+  if (c.includes('lend'))
+    return `Supplying an asset to ${name}'s market counts; borrowing against the supplied collateral counts as a second qualifying action, so supply and borrow once each week rather than only depositing.`;
+  if (c.includes('cdp') || c.includes('collateral'))
+    return `A mint against ${name}'s collateral market counts, and the points programmes here usually weight a mint that is later repaid, so borrow against the minted position once a week so the mint is live.`;
+  if (c.includes('rwa'))
+    return `Minting ${name}'s token on ${chain} counts, and most RWA points programmes pay for the mint and for holding over a full period, so mint once and keep the receipt token until the period closes.`;
+  if (c.includes('basis') || c.includes('derivative'))
+    return `Opening and closing a position on ${name}'s ${chain} market counts, and points here usually pay on turnover rather than on size, so trade once a week at the smallest size the market takes.`;
+  if (c.includes('dex') || c.includes('yield') || c.includes('leveraged farm'))
+    return `Providing liquidity to ${name}'s pool counts, and liquidity points programmes pay on fees earned, so keep the position in the pool and trade against it once a week to generate fees.`;
+  if (c.includes('bridge')) return `Bridging through ${name} counts, so bridge once a week with the smallest amount that covers the fee.`;
+  if (c.includes('restak') || c.includes('staking pool'))
+    return `Staking through ${name} counts, and restaking points programmes weight a restake of an already-staked position, so stake and then restake the receipt once a week.`;
+  if (c.includes('liquid staking')) return `Staking through ${name} counts on the staked balance, so keep the receipt token staked rather than selling it.`;
+  if (c.includes('prediction')) return `Holding a position in ${name}'s markets counts, and points here usually pay on the size held, so keep one position open rather than trading it.`;
+  if (c.includes('payment')) return `Routing volume through ${name} counts, so pay once a week through its rails rather than once at the start.`;
+  if (c.includes('insurance')) return `Buying cover from ${name} counts, and cover points usually pay on the premium, so renew the policy once a period.`;
+  if (c.includes('option')) return `Buying options on ${name}'s market counts, and options points usually pay on premium paid, so buy the smallest contract the market takes, once a week.`;
+  if (c.includes('stable') || c.includes('dual-token')) return `Minting or swapping into ${name}'s stable asset counts, and these points programmes often weight the swap rather than the mint, so swap once a week.`;
+  return `The action ${name} counts is a deposit on ${chain}, and points here usually pay on a deposit that is later withdrawn, so deposit and withdraw once each week.`;
+}
+
+/**
  * A farm plan: seven steps, each an action with what it costs and how long it takes. Every number
  * in it comes from the protocol's own record: its category picks the action, its chains pick the
  * network and the gas, its TVL picks the size of the position and its age picks the hold window.
@@ -595,7 +627,8 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): string[] {
   return [
     `Open a fresh wallet on ${chain} and put only $${capital} of USDC in it. Cost: $${capital} of capital and about $${gas.toFixed(2)} of gas for the first transaction. Time: 8 minutes.`,
     `${action} Cost: $${capital} of capital, about $${gas.toFixed(2)} of gas. Time: 15 minutes to set up.`,
-    `Size the position against the protocol's $${tvl} of TVL: $${capital} is small enough to enter and exit without moving the market. Cost: nothing beyond the gas above. Time: 2 minutes.`,
+    `Size the position against the protocol's ${tvl} of TVL: $${capital} is small enough to enter and exit without moving the market. Cost: nothing beyond the gas above. Time: 2 minutes.`,
+    `Know what counts: ${qualifyingAction(p, chain)} Cost: nothing beyond the gas above. Time: 5 minutes to read, then the weekly action it names.`,
     second === null
       ? `Come back once a week and make one qualifying action, such as a deposit, a borrow, a swap or a vote. Cost: about $${gas.toFixed(2)} of gas a week. Time: 10 minutes a week.`
       : `Come back once a week and make one qualifying action on ${chain}, such as a deposit, a borrow, a swap or a vote. Cost: about $${gas.toFixed(2)} of gas a week. Time: 10 minutes a week.`,

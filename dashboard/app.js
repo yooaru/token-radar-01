@@ -702,8 +702,9 @@
       el.board.appendChild(boardTable(rows));
     }
     var watchRows = rows.filter(function (r) { return r.watchlisted; }).length;
-    el.count.textContent = rows.length + ' of ' + ROWS.length + ' ranked  ·  ' + watchRows + ' on the watchlist  ·  ' +
-      agreement() + '/' + ROWS.length + ' rows reproduced from the model';
+    el.count.innerHTML =
+      rows.length + ' of ' + ROWS.length + ' ranked &middot; ' + watchRows + ' on the watchlist &middot; ' +
+      '<span class="check-badge">' + agreement() + ' of ' + ROWS.length + ' rows reproduced from the model in this page</span>';
     document.getElementById('cov-ranked').textContent = String(DATA.board_size);
     document.getElementById('cov-excluded').textContent = String(EXCLUDED.length);
     document.getElementById('boot-line').textContent =

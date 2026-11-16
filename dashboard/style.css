@@ -114,8 +114,15 @@ input[type="search"], select {
 }
 input[type="search"] { width: 100%; }
 input[type="search"]::placeholder { color: var(--faint); }
+
 input[type="search"]:focus, select:focus, button:focus-visible, tr:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 1px;
+}
+
+.check-badge {
+  display: inline-block; margin-left: 10px; padding: 3px 10px; border-radius: 999px;
+  border: 1px solid rgba(63, 224, 164, 0.45); background: rgba(63, 224, 164, 0.12);
+  color: var(--accent); font-family: var(--sans); font-size: 13px; font-weight: 700; letter-spacing: 0.01em;
 }
 
 .dir, .ghost {
