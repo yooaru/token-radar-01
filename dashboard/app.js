@@ -438,13 +438,47 @@
       node('div', { class: 'label', text: 'implied value if it issues a token on these figures · band ' + fmtUsd(row.implied_value_low_usd) + ' to ' + fmtUsd(row.implied_value_high_usd) }),
     ]));
     el.detail.appendChild(node('div', { class: 'detail-verdict verdict ' + row.verdict, text: row.verdict + ' · ' + row.verdict_reason }));
-    el.detail.appendChild(facts);
-    el.detail.appendChild(node('h4', { text: 'The model on this row' }));
-    el.detail.appendChild(factors);
-    el.detail.appendChild(node('h4', { text: 'Traded protocols of a similar size' }));
-    el.detail.appendChild(peerTable(row));
-    el.detail.appendChild(node('h4', { text: 'How to farm it' }));
-    el.detail.appendChild(plan);
+    var tabBar = node('div', { class: 'detail-tabs' });
+    var tabBody = node('div', { class: 'detail-tabbody' });
+    var tabs = [
+      { id: 'model', label: 'Model', build: function () {
+        var box = node('div');
+        box.appendChild(node('h4', { text: 'The model on this row' }));
+        box.appendChild(factors);
+        box.appendChild(node('h4', { text: 'Traded protocols of a similar size' }));
+        box.appendChild(peerTable(row));
+        return box;
+      } },
+      { id: 'farm', label: 'Farm plan', build: function () {
+        var box = node('div');
+        box.appendChild(node('h4', { text: 'How to farm it' }));
+        box.appendChild(plan);
+        return box;
+      } },
+      { id: 'facts', label: 'Record', build: function () { return facts; } },
+    ];
+    var activeTab = 'model';
+    var showTab = function (id) {
+      activeTab = id;
+      tabBody.innerHTML = '';
+      for (var t = 0; t < tabs.length; t++) {
+        var chosen = tabs[t].id === id;
+        tabBar.children[t].className = 'detail-tab' + (chosen ? ' on' : '');
+        tabBar.children[t].setAttribute('aria-selected', chosen ? 'true' : 'false');
+      }
+      for (var u = 0; u < tabs.length; u++) {
+        if (tabs[u].id === id) tabBody.appendChild(tabs[u].build());
+      }
+    };
+    tabs.forEach(function (t) {
+      tabBar.appendChild(node('button', {
+        class: 'detail-tab', type: 'button', role: 'tab', 'aria-selected': 'false', text: t.label,
+        onclick: function () { showTab(t.id); },
+      }));
+    });
+    el.detail.appendChild(tabBar);
+    el.detail.appendChild(tabBody);
+    showTab(activeTab);
     el.detail.appendChild(node('button', { class: 'back', type: 'button', text: 'Close', onclick: closeDetail }));
     el.detail.hidden = false;
     el.scrim.hidden = false;
@@ -715,6 +749,8 @@
       'Tested out of sample: median error ' + DATA.test.test_median_factor.toFixed(1) + 'x, ' +
       Math.round(DATA.test.test_within_2x_share * 100) + '% within 2x, ' +
       Math.round(DATA.test.test_band_coverage * 100) + '% inside the band.';
+    document.getElementById('stat-audited').textContent =
+      DATA.audited_no_token + ' (' + DATA.board_size + ' ranked + ' + EXCLUDED.length + ' set aside)';
     document.getElementById('comp-count-2').textContent = DATA.comp_set_size + ' traded protocols';
     document.getElementById('stat-multiple').textContent = ROWS.length ? ROWS[0].implied_multiple.toFixed(3) + 'x' : 'n/a';
   }
