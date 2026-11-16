@@ -371,7 +371,7 @@
     ]);
   }
 
-  function openDetail(slug) {
+  function openDetail(slug, tab) {
     var row = rowBySlug(slug);
     if (!row) return;
     state.selected = slug;
@@ -461,7 +461,7 @@
       } },
       { id: 'facts', label: 'Record', build: function () { return facts; } },
     ];
-    var activeTab = 'model';
+    var activeTab = tab === 'farm' || tab === 'facts' ? tab : 'model';
     var showTab = function (id) {
       activeTab = id;
       tabBody.innerHTML = '';
@@ -477,7 +477,7 @@
     tabs.forEach(function (t) {
       tabBar.appendChild(node('button', {
         class: 'detail-tab', type: 'button', role: 'tab', 'aria-selected': 'false', text: t.label,
-        onclick: function () { showTab(t.id); },
+        onclick: function () { showTab(t.id); history.replaceState(null, '', '#/p/' + slug + '?tab=' + t.id); },
       }));
     });
     el.detail.appendChild(tabBar);
@@ -486,7 +486,7 @@
     el.detail.appendChild(node('button', { class: 'back', type: 'button', text: 'Close', onclick: closeDetail }));
     el.detail.hidden = false;
     el.scrim.hidden = false;
-    if (location.hash !== '#/p/' + slug) history.replaceState(null, '', '#/p/' + slug);
+    if (location.hash !== '#/p/' + slug + (activeTab === 'model' ? '' : '?tab=' + activeTab)) history.replaceState(null, '', '#/p/' + slug + (activeTab === 'model' ? '' : '?tab=' + activeTab));
     var tr = document.querySelector('tr[data-slug="' + slug + '"]');
     if (tr) tr.classList.add('open');
   }
@@ -991,11 +991,22 @@
     });
   }
 
-  // The hash carries the view: #/p/slug opens a protocol's detail, #/f?cat=…&growth=up opens a
-  // filtered board. A link into the dashboard therefore lands on the board it names.
+  // The hash carries the view: #/p/slug opens a protocol's detail, #/p/slug?tab=farm opens one of
+  // its tabs, and #/f?cat=…&growth=up opens a filtered board. A link into the dashboard therefore
+  // lands on the board, the row or the tab it names.
   function readHash() {
     var hash = location.hash.slice(1);
-    if (hash.indexOf('/p/') === 0) return { view: 'detail', slug: hash.slice(3) };
+    if (hash.indexOf('/p/') === 0) {
+      var rest = hash.slice(3);
+      var at = rest.indexOf('?');
+      if (at === -1) return { view: 'detail', slug: rest, tab: 'model' };
+      var detailParams = {};
+      rest.slice(at + 1).split('&').forEach(function (pair) {
+        var kv = pair.split('=');
+        if (kv[0]) detailParams[kv[0]] = decodeURIComponent(kv[1] || '');
+      });
+      return { view: 'detail', slug: rest.slice(0, at), tab: detailParams.tab || 'model' };
+    }
     if (hash.indexOf('/f?') === 0) {
       var params = {};
       hash.slice(3).split('&').forEach(function (pair) {
@@ -1010,7 +1021,7 @@
   function applyHash() {
     var route = readHash();
     if (route.view === 'detail') {
-      openDetail(route.slug);
+      openDetail(route.slug, route.tab);
       return;
     }
     closeDetail();

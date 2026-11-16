@@ -677,20 +677,33 @@ export function readinessOf(tvlUsd: number, change7d: number | null, age: number
   return Math.round(Math.max(0, Math.min(100, agePoints + sizePoints + growthPoints)));
 }
 
-/** How much capital one farm position needs, from the protocol's own TVL. */
+/**
+ * How much capital one farm position needs, from the protocol's own TVL.
+ *
+ * The position scales with the pool it enters, on a power law: ten times the TVL asks for about
+ * four times the capital, because a bigger pool needs a bigger position to register but not a
+ * proportionally bigger one. Every protocol therefore gets its own number, and that number is
+ * always a small share of the pool, so the farmer can leave without moving the market.
+ */
 function capitalFor(p: SnapshotProtocol): number {
-  if (p.tvl_usd >= 5_000_000_000) return 250;
-  if (p.tvl_usd >= 1_000_000_000) return 150;
-  if (p.tvl_usd >= 100_000_000) return 100;
-  return 50;
+  const raw = 20 * Math.pow(Math.max(p.tvl_usd, 1) / 25_000_000, 0.55);
+  const dollars = Math.round(raw / 5) * 5;
+  if (dollars < 50) return 50;
+  if (dollars > 2500) return 2500;
+  return dollars;
 }
 
-/** How long to hold, from the protocol's age: a young protocol gets a longer qualifying window. */
-function holdDaysFor(age: number | null): number {
-  if (age === null) return 30;
-  if (age < 180) return 60;
-  if (age < 365) return 45;
-  return 30;
+/**
+ * How long to hold the position, from the protocol's own size and age.
+ *
+ * A bigger pool counts a small action faster, so its window is shorter; a young protocol has no
+ * track record yet, so it gets a longer window to show the activity was not one lucky week.
+ */
+function holdDaysFor(p: SnapshotProtocol, age: number | null): number {
+  let days = p.tvl_usd >= 1_000_000_000 ? 30 : p.tvl_usd >= 250_000_000 ? 45 : p.tvl_usd >= 100_000_000 ? 60 : 90;
+  if (age !== null && age < 180) days += 30;
+  if (age !== null && age < 90) days += 30;
+  return Math.round(days / 5) * 5;
 }
 
 /** What one transaction on that chain costs, in dollars: the plan's budget lines need a number. */
@@ -763,30 +776,68 @@ function qualifyingAction(p: SnapshotProtocol, chain: string): string {
 }
 
 /**
- * A farm plan: seven steps, each an action with what it costs and how long it takes. Every number
- * in it comes from the protocol's own record: its category picks the action, its chains pick the
- * network and the gas, its TVL picks the size of the position and its age picks the hold window.
+ * The weekly habit this category's points programme counts, in one line the reader can follow.
+ * The mechanism is the one qualifyingAction explains, shortened to the action itself.
  */
-export function farmSteps(p: SnapshotProtocol, age: number | null): string[] {
+function weeklyHabit(p: SnapshotProtocol, chain: string): string {
+  const c = (p.category ?? '').toLowerCase();
+  const name = p.name;
+  if (c.includes('risk curator') || c.includes('capital allocator'))
+    return `Come back every week and rebalance the ${name} vault you deposited into, so the position is never idle`;
+  if (c.includes('lend'))
+    return `Come back every week and supply again, then borrow once against what you supplied, so two kinds of action count`;
+  if (c.includes('cdp') || c.includes('collateral'))
+    return `Come back every week and mint against your collateral in ${name}, so the mint is live and counts again`;
+  if (c.includes('rwa'))
+    return `Come back every week and keep the ${name} receipt token staked, so the position is not sold out of the programme`;
+  if (c.includes('basis') || c.includes('derivative'))
+    return `Come back every week and open and close one small ${name} position, because turnover pays rather than size`;
+  if (c.includes('dex') || c.includes('yield') || c.includes('leveraged farm'))
+    return `Come back every week and trade against your ${name} liquidity, because the points pay on fees earned`;
+  if (c.includes('bridge')) return `Come back every week and bridge the smallest amount that covers the fee, through ${name}`;
+  if (c.includes('restak') || c.includes('staking pool'))
+    return `Come back every week and restake the receipt you already hold, which is what these programmes weight`;
+  if (c.includes('liquid staking')) return `Come back every week and keep the receipt token staked rather than selling it`;
+  if (c.includes('prediction')) return `Come back every week and keep one ${name} position open rather than trading it`;
+  if (c.includes('payment')) return `Come back every week and pay once through ${name}'s rails rather than only at the start`;
+  if (c.includes('insurance')) return `Come back every week and renew the cover you bought from ${name}`;
+  if (c.includes('option')) return `Come back every week and buy the smallest contract ${name}'s market takes`;
+  if (c.includes('stable') || c.includes('dual-token')) return `Come back every week and swap into ${name}'s stable asset again`;
+  return `Come back every week and make one qualifying action on ${chain}, such as a deposit, a borrow, a swap or a vote`;
+}
+
+/**
+ * A farm plan: eight steps, each an action with what it costs and how long it takes. Every number
+ * in it comes from the protocol's own record: its category picks the action, its chains pick the
+ * network and the gas, its TVL picks the size of the position, its age picks the hold window, and
+ * the model's own band says what the stake is worth against what the plan costs.
+ */
+export function farmSteps(p: SnapshotProtocol, age: number | null, impliedLow: number): string[] {
   const chain = p.chains.length > 0 ? p.chains[0]! : 'its main chain';
   const capital = capitalFor(p);
-  const hold = holdDaysFor(age);
+  const hold = holdDaysFor(p, age);
   const gas = gasFor(chain);
   const action = actionFor(p, capital, chain);
   const tvl = p.tvl_usd >= 1e9 ? `$${(p.tvl_usd / 1e9).toFixed(1)}B` : `$${Math.round(p.tvl_usd / 1e6)}M`;
   const ageText = age === null ? 'not dated in the snapshot' : `${age} days`;
   const second = p.chains.length > 1 ? p.chains[1]! : null;
+  const weeks = Math.max(1, Math.round(hold / 7));
+  const actions = weeks + 1;
+  const totalCost = Math.round((gas * actions + 0.5) * 100) / 100;
+  const share = (capital / Math.max(p.tvl_usd, 1)) * 100;
+  const shareText = share >= 0.01 ? `${share.toFixed(2)}% of that pool` : `one part in ${Math.round(p.tvl_usd / Math.max(capital, 1)).toLocaleString('en-US')} of that pool`;
+  const costShareOfLow = impliedLow > 0 ? (totalCost / impliedLow) * 100 : 0;
+  const costShareText = costShareOfLow > 0 && costShareOfLow < 0.0001 ? 'under 0.0001%' : `${costShareOfLow.toFixed(4)}%`;
+  const habit = weeklyHabit(p, chain);
   return [
     `Open a fresh wallet on ${chain} and put only $${capital} of USDC in it. Cost: $${capital} of capital and about $${gas.toFixed(2)} of gas for the first transaction. Time: 8 minutes.`,
     `${action} Cost: $${capital} of capital, about $${gas.toFixed(2)} of gas. Time: 15 minutes to set up.`,
-    `Size the position against the protocol's ${tvl} of TVL: $${capital} is small enough to enter and exit without moving the market. Cost: nothing beyond the gas above. Time: 2 minutes.`,
+    `Size the position from the protocol's own ${tvl} of TVL: $${capital} is ${shareText}, small enough to enter and exit without moving it. Cost: nothing beyond the gas above. Time: 2 minutes.`,
     `Know what counts: ${qualifyingAction(p, chain)} Cost: nothing beyond the gas above. Time: 5 minutes to read, then the weekly action it names.`,
-    second === null
-      ? `Come back once a week and make one qualifying action, such as a deposit, a borrow, a swap or a vote. Cost: about $${gas.toFixed(2)} of gas a week. Time: 10 minutes a week.`
-      : `Come back once a week and make one qualifying action on ${chain}, such as a deposit, a borrow, a swap or a vote. Cost: about $${gas.toFixed(2)} of gas a week. Time: 10 minutes a week.`,
+    `${habit}. Cost: about $${gas.toFixed(2)} of gas a week, $${(gas * weeks).toFixed(2)} across the ${weeks} weeks the plan runs${second === null ? '' : `, all on ${chain}`}. Time: 10 minutes a week.`,
     `Hold the position for at least ${hold} days so the activity is counted in more than one snapshot; this protocol has been tracked for ${ageText}. Cost: the $${capital} stays locked in the position. Time: ${hold} days.`,
-    `Check the protocol's own points or rewards page and claim only from the link that page publishes. Cost: no fee to check, and never pay to claim. Time: 10 minutes.`,
-    `Log the wallet, every date and every transaction, and set an exit rule: leave if the points program closes or TVL falls 30% from ${tvl}. Cost: nothing but the log. Time: 5 minutes a week.`,
+    `Know what is at stake against the cost: the model's low end values this token at ${fmtMultiple(impliedLow)} against the $${capital} the plan ties up, and the plan's $${totalCost.toFixed(2)} of gas over ${weeks} weeks needs ${costShareText} of that value to pay for itself. Cost: $${totalCost.toFixed(2)} in total. Time: 5 minutes to read the band on the row.`,
+    `Check the protocol's own points or rewards page and claim only from the link that page publishes, and set the exit rule now: leave if the points program closes or TVL falls 30% from ${tvl}. Cost: no fee to check, and never pay to claim. Time: 10 minutes.`,
   ];
 }
 
@@ -808,7 +859,7 @@ export function farmVerdict(
   impliedLow: number,
 ): BoardRow['farm'] {
   const capital = capitalFor(p);
-  const hold = holdDaysFor(age);
+  const hold = holdDaysFor(p, age);
   const weeks = Math.max(1, Math.round(hold / 7));
   const gas = gasFor(p.chains.length > 0 ? p.chains[0]! : 'ethereum');
   const actions = weeks + 1;
@@ -997,7 +1048,7 @@ export function buildBoard(snapshot: Snapshot, model: ModelConstants = modelCons
       age_days: s.age,
     },
     farm: farmVerdict(s.p, s.age, s.low),
-    farm_steps: farmSteps(s.p, s.age),
+    farm_steps: farmSteps(s.p, s.age, s.low),
   }));
 }
 
