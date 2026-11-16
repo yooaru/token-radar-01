@@ -207,6 +207,7 @@
     var chips = [];
     var chains = row.chains || [];
     for (var i = 0; i < chains.length && i < (max || 3); i++) chips.push(node('span', { class: 'chip', text: chains[i] }));
+    chips.forEach(function (c) { c.style.whiteSpace = 'nowrap'; });
     if (chains.length > (max || 3)) chips.push(node('span', { class: 'chip more', text: '+' + (chains.length - (max || 3)) }));
     return node('span', { class: 'chips' }, chips);
   }
@@ -710,6 +711,11 @@
     document.getElementById('boot-line').textContent =
       'exponent ' + DATA.bootstrap.exponent_p10.toFixed(2) + ' to ' + DATA.bootstrap.exponent_p90.toFixed(2) +
       ', top ten holds in ' + Math.round(DATA.bootstrap.top10_stability * 100) + '% of ' + DATA.bootstrap.draws + ' resamples';
+    document.getElementById('strip-note').textContent =
+      'Tested out of sample: median error ' + DATA.test.test_median_factor.toFixed(1) + 'x, ' +
+      Math.round(DATA.test.test_within_2x_share * 100) + '% within 2x, ' +
+      Math.round(DATA.test.test_band_coverage * 100) + '% inside the band.';
+    document.getElementById('comp-count-2').textContent = DATA.comp_set_size + ' traded protocols';
     document.getElementById('stat-multiple').textContent = ROWS.length ? ROWS[0].implied_multiple.toFixed(3) + 'x' : 'n/a';
   }
 

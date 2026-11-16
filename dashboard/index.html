@@ -23,11 +23,98 @@
     <div><dt>ranked</dt><dd id="stat-ranked">&mdash;</dd></div>
     <div><dt>early</dt><dd id="stat-early">&mdash;</dd></div>
     <div><dt>no token yet</dt><dd id="stat-audited">&mdash;</dd></div>
-    <div><dt>implied mcap / TVL</dt><dd id="stat-multiple">&mdash;</dd></div>
     <div><dt>calibrated on</dt><dd id="stat-comps">&mdash;</dd></div>
+    <div><dt>implied mcap / TVL</dt><dd id="stat-multiple">&mdash;</dd></div>
     <div><dt>snapshot</dt><dd id="stat-date">&mdash;</dd></div>
   </dl>
 </header>
+
+<section class="strip" id="strip">
+  <p class="strip-line">
+    <b>implied value</b> = TVL<sup>0.615</sup> &times; growth &times; maturity, the size curve fitted on this
+    snapshot's own <b id="comp-count">traded protocols</b> &mdash; not a chosen multiple.
+    <span class="strip-note" id="strip-note"></span>
+  </p>
+</section>
+
+<nav class="tabs" role="tablist" aria-label="Views">
+  <button type="button" role="tab" id="tab-pre" aria-selected="true" aria-controls="board">Pre-token radar</button>
+  <button type="button" role="tab" id="tab-live" aria-selected="false" aria-controls="live">Already trading</button>
+  <button type="button" role="tab" id="tab-pins" aria-selected="false" aria-controls="pins">Shortlist</button>
+  <button type="button" role="tab" id="tab-excluded" aria-selected="false" aria-controls="excluded">Set aside</button>
+</nav>
+
+<section class="controls" id="controls">
+  <div class="field grow">
+    <label for="q">Search</label>
+    <input type="search" id="q" placeholder="protocol, slug, chain" autocomplete="off" spellcheck="false">
+  </div>
+  <div class="field">
+    <label for="category">Category</label>
+    <select id="category"><option value="all">All categories</option></select>
+  </div>
+  <div class="field">
+    <label for="chain">Chain</label>
+    <select id="chain"><option value="all">All chains</option></select>
+  </div>
+  <div class="field">
+    <label for="tvl">TVL</label>
+    <select id="tvl">
+      <option value="all">Any TVL</option>
+      <option value="0-50">under $50M</option>
+      <option value="50-250">$50M &ndash; $250M</option>
+      <option value="250-1000">$250M &ndash; $1B</option>
+      <option value="1000-">$1B and up</option>
+    </select>
+  </div>
+  <div class="field">
+    <label for="growth">7-day TVL</label>
+    <select id="growth">
+      <option value="all">Any change</option>
+      <option value="up">Growing</option>
+      <option value="flat">Flat</option>
+      <option value="down">Shrinking</option>
+    </select>
+  </div>
+  <div class="field">
+    <label for="verdict">Verdict</label>
+    <select id="verdict">
+      <option value="all">Any verdict</option>
+      <option value="farm">Farm it</option>
+      <option value="thin">Thin</option>
+      <option value="skip">Skip</option>
+    </select>
+  </div>
+  <div class="field check">
+    <input type="checkbox" id="watch-only">
+    <label for="watch-only">Watchlist only</label>
+  </div>
+  <div class="field">
+    <label for="sort">Sort by</label>
+    <select id="sort">
+      <option value="implied">Implied value</option>
+      <option value="tvl">TVL</option>
+      <option value="growth">7-day change</option>
+      <option value="age">Days with no token</option>
+      <option value="net">Implied mcap / TVL</option>
+      <option value="cost">Farm cost</option>
+      <option value="readiness">Readiness</option>
+      <option value="name">Name</option>
+    </select>
+  </div>
+  <button type="button" id="dir" class="dir" aria-label="Reverse the order">&#9660;</button>
+  <div class="field actions">
+    <button type="button" id="compare-toggle" class="ghost">Compare</button>
+    <button type="button" id="csv" class="ghost">CSV</button>
+    <button type="button" id="palette-toggle" class="ghost" title="Keyboard shortcuts">?</button>
+  </div>
+  <p class="count" id="count" aria-live="polite">&mdash;</p>
+</section>
+
+<main id="board" tabindex="-1" aria-busy="true"></main>
+<section id="live" hidden></section>
+<section id="pins" hidden></section>
+<section id="excluded" hidden></section>
 
 <section class="method" id="method">
   <div class="method-head">
@@ -43,7 +130,7 @@
     <li>
       <span class="f-name">size curve</span>
       <span class="f-body">mcap = 10<sup>2.297</sup> &times; TVL<sup>0.615</sup></span>
-      <span class="f-note">Fitted on the <b id="comp-count">comps</b>: the snapshot's own traded protocols. The exponent says how much more a token is worth for each tenfold of TVL, read off the market rather than assumed.</span>
+      <span class="f-note">Fitted on the <b id="comp-count-2">comps</b>: the snapshot's own traded protocols. The exponent says how much more a token is worth for each tenfold of TVL, read off the market rather than assumed.</span>
     </li>
     <li>
       <span class="f-name">band</span>
@@ -113,86 +200,6 @@
   </div>
   <svg id="chart" viewBox="0 0 900 260" role="img" aria-label="Implied value against TVL, with the fitted size curve"></svg>
 </section>
-
-<nav class="tabs" role="tablist" aria-label="Views">
-  <button type="button" role="tab" id="tab-pre" aria-selected="true" aria-controls="board">Pre-token radar</button>
-  <button type="button" role="tab" id="tab-live" aria-selected="false" aria-controls="live">Already trading</button>
-  <button type="button" role="tab" id="tab-pins" aria-selected="false" aria-controls="pins">Shortlist</button>
-  <button type="button" role="tab" id="tab-excluded" aria-selected="false" aria-controls="excluded">Set aside</button>
-</nav>
-
-<section class="controls" id="controls">
-  <div class="field grow">
-    <label for="q">Search</label>
-    <input type="search" id="q" placeholder="protocol, slug, chain" autocomplete="off" spellcheck="false">
-  </div>
-  <div class="field">
-    <label for="category">Category</label>
-    <select id="category"><option value="all">All categories</option></select>
-  </div>
-  <div class="field">
-    <label for="chain">Chain</label>
-    <select id="chain"><option value="all">All chains</option></select>
-  </div>
-  <div class="field">
-    <label for="tvl">TVL</label>
-    <select id="tvl">
-      <option value="all">Any TVL</option>
-      <option value="0-50">under $50M</option>
-      <option value="50-250">$50M &ndash; $250M</option>
-      <option value="250-1000">$250M &ndash; $1B</option>
-      <option value="1000-">$1B and up</option>
-    </select>
-  </div>
-  <div class="field">
-    <label for="growth">7-day TVL</label>
-    <select id="growth">
-      <option value="all">Any change</option>
-      <option value="up">Growing</option>
-      <option value="flat">Flat</option>
-      <option value="down">Shrinking</option>
-    </select>
-  </div>
-  <div class="field">
-    <label for="verdict">Verdict</label>
-    <select id="verdict">
-      <option value="all">Any verdict</option>
-      <option value="farm">Farm it</option>
-      <option value="thin">Thin</option>
-      <option value="skip">Skip</option>
-    </select>
-  </div>
-  <div class="field check">
-
-    <input type="checkbox" id="watch-only">
-    <label for="watch-only">Watchlist only</label>
-  </div>
-  <div class="field">
-    <label for="sort">Sort by</label>
-    <select id="sort">
-      <option value="implied">Implied value</option>
-      <option value="tvl">TVL</option>
-      <option value="growth">7-day change</option>
-      <option value="age">Days with no token</option>
-      <option value="net">Implied mcap / TVL</option>
-      <option value="cost">Farm cost</option>
-      <option value="readiness">Readiness</option>
-      <option value="name">Name</option>
-    </select>
-  </div>
-  <button type="button" id="dir" class="dir" aria-label="Reverse the order">&#9660;</button>
-  <div class="field actions">
-    <button type="button" id="compare-toggle" class="ghost">Compare</button>
-    <button type="button" id="csv" class="ghost">CSV</button>
-    <button type="button" id="palette-toggle" class="ghost" title="Keyboard shortcuts">?</button>
-  </div>
-  <p class="count" id="count" aria-live="polite">&mdash;</p>
-</section>
-
-<main id="board" tabindex="-1" aria-busy="true"></main>
-<section id="live" hidden></section>
-<section id="pins" hidden></section>
-<section id="excluded" hidden></section>
 
 <div class="scrim" id="scrim" hidden></div>
 <aside class="detail" id="detail" aria-label="Protocol detail" hidden></aside>
