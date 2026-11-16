@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Token Radar: pre-token protocols ranked by implied value</title>
-<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 <a class="skip" href="#board">Skip to the board</a>
@@ -99,6 +99,19 @@
     </div>
     <p class="sandbox-out" id="sandbox-out"></p>
   </div>
+</section>
+
+<section class="chart-panel" id="chart-panel">
+  <div class="chart-head">
+    <h3>What the market pays for size</h3>
+    <p>The size curve fitted on the traded protocols, and every pre-token protocol placed on it. A point far above the curve is priced as if it were bigger than it is.</p>
+  </div>
+  <div class="chart-legend">
+    <span><i class="dot traded"></i> traded protocols (the fit)</span>
+    <span><i class="dot pre"></i> pre-token protocols</span>
+    <span><i class="dot watch"></i> on the watchlist</span>
+  </div>
+  <svg id="chart" viewBox="0 0 900 260" role="img" aria-label="Implied value against TVL, with the fitted size curve"></svg>
 </section>
 
 <nav class="tabs" role="tablist" aria-label="Views">

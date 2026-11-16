@@ -734,6 +734,72 @@
       '  ·  watchlist floor ' + fmtUsd(DATA.floor_usd);
   }
 
+  // ---------- the chart
+
+  // The size curve and the protocols on it, drawn in the page: the traded protocols the curve was
+  // fitted on, the pre-token protocols placed against it, and the band the fit's own residuals give.
+  function renderChart() {
+    var svg = document.getElementById('chart');
+    if (!svg) return;
+    var W = 900, H = 260, L = 54, R = 14, T = 10, B = 26;
+    var pts = ROWS.map(function (r) { return { x: r.tvl_usd, y: r.implied_value_usd, row: r }; });
+    var traded = LIVE.filter(function (l) { return l.in_comp_set && l.mcap_usd; })
+      .map(function (l) { return { x: l.tvl_usd, y: l.mcap_usd, live: l }; });
+    if (!pts.length) return;
+
+    var all = pts.concat(traded);
+    var xs = all.map(function (p) { return Math.log10(Math.max(p.x, 1e6)); });
+    var ys = all.map(function (p) { return Math.log10(Math.max(p.y, 1e3)); });
+    var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
+    var y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+    if (x1 - x0 < 1) x1 = x0 + 1;
+    if (y1 - y0 < 1) y1 = y0 + 1;
+    var sx = function (v) { return L + ((Math.log10(Math.max(v, 1e6)) - x0) / (x1 - x0)) * (W - L - R); };
+    var sy = function (v) { return H - B - ((Math.log10(Math.max(v, 1e3)) - y0) / (y1 - y0)) * (H - T - B); };
+
+    var parts = [];
+    // The band the fit's residuals give, drawn around the curve.
+    var bandTop = '', bandBottom = '';
+    for (var i = 0; i <= 40; i++) {
+      var tvl = Math.pow(10, x0 + ((x1 - x0) * i) / 40);
+      var fitted = Math.pow(10, MODEL.size_curve_intercept + MODEL.size_curve_exponent * Math.log10(tvl));
+      var px = sx(tvl);
+      bandTop += (i ? 'L' : 'M') + px.toFixed(1) + ' ' + sy(fitted * MODEL.band_high_factor).toFixed(1);
+      bandBottom = 'L' + px.toFixed(1) + ' ' + sy(fitted * MODEL.band_low_factor).toFixed(1) + bandBottom;
+    }
+    parts.push('<path class="band" d="' + bandTop + bandBottom + 'Z"></path>');
+    // The curve itself.
+    var curve = '';
+    for (var j = 0; j <= 40; j++) {
+      var tvl2 = Math.pow(10, x0 + ((x1 - x0) * j) / 40);
+      var fit2 = Math.pow(10, MODEL.size_curve_intercept + MODEL.size_curve_exponent * Math.log10(tvl2));
+      curve += (j ? 'L' : 'M') + sx(tvl2).toFixed(1) + ' ' + sy(fit2).toFixed(1);
+    }
+    parts.push('<path class="curve" d="' + curve + '"></path>');
+    // The traded protocols, then the pre-token ones on top.
+    traded.forEach(function (p) {
+      parts.push('<circle class="cmp" cx="' + sx(p.x).toFixed(1) + '" cy="' + sy(p.y).toFixed(1) + '" r="2.5"></circle>');
+    });
+    pts.forEach(function (p) {
+      parts.push('<circle class="pt' + (p.row.watchlisted ? ' watch' : '') + '" cx="' + sx(p.x).toFixed(1) + '" cy="' + sy(p.y).toFixed(1) + '" r="3" data-slug="' + p.row.slug + '"></circle>');
+    });
+    // Axes and their labels.
+    parts.push('<line class="axis" x1="' + L + '" y1="' + (H - B) + '" x2="' + (W - R) + '" y2="' + (H - B) + '"></line>');
+    parts.push('<line class="axis" x1="' + L + '" y1="' + T + '" x2="' + L + '" y2="' + (H - B) + '"></line>');
+    [0, 0.25, 0.5, 0.75, 1].forEach(function (f) {
+      var tv = Math.pow(10, x0 + (x1 - x0) * f);
+      var yv = Math.pow(10, y0 + (y1 - y0) * f);
+      parts.push('<text x="' + sx(tv).toFixed(1) + '" y="' + (H - B + 13) + '" text-anchor="middle">' + fmtUsd(tv) + '</text>');
+      parts.push('<text x="' + (L - 6) + '" y="' + (sy(yv) + 3).toFixed(1) + '" text-anchor="end">' + fmtUsd(yv) + '</text>');
+    });
+    parts.push('<text x="' + (W - R) + '" y="' + (H - 4) + '" text-anchor="end">TVL</text>');
+    parts.push('<text x="' + L + '" y="' + (T + 4) + '">implied value</text>');
+    svg.innerHTML = parts.join('');
+    svg.querySelectorAll('.pt').forEach(function (dot) {
+      dot.addEventListener('click', function () { openDetail(dot.getAttribute('data-slug')); });
+    });
+  }
+
   // The hash carries the view: #/p/slug opens a protocol's detail, #/f?cat=…&growth=up opens a
   // filtered board. A link into the dashboard therefore lands on the board it names.
   function readHash() {
@@ -823,6 +889,7 @@
   renderSandbox();
   renderStats();
   render();
+  renderChart();
   window.addEventListener('hashchange', applyHash);
   applyHash();
 })();
